@@ -16,7 +16,6 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
-    # Foydalanuvchilar
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY,
@@ -30,7 +29,6 @@ def init_db():
         )
     ''')
     
-    # Sozlamalar
     c.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -38,7 +36,6 @@ def init_db():
         )
     ''')
     
-    # Majburiy kanallar
     c.execute('''
         CREATE TABLE IF NOT EXISTS channels (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +43,6 @@ def init_db():
         )
     ''')
     
-    # To'lov tizimlari
     c.execute('''
         CREATE TABLE IF NOT EXISTS pay_types (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,14 +50,12 @@ def init_db():
         )
     ''')
     
-    # Statistika
     c.execute('''
         CREATE TABLE IF NOT EXISTS stats (
             user_id INTEGER PRIMARY KEY
         )
     ''')
     
-    # Standart sozlamalar
     defaults = [
         ('taklif', '250'),
         ('valyuta', "so'm"),
@@ -200,7 +194,6 @@ def get_all_users():
     conn.close()
     return [row[0] for row in rows]
 
-# Kanallar
 def add_channel(url):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -223,7 +216,6 @@ def clear_channels():
     conn.commit()
     conn.close()
 
-# To'lov tizimlari
 def add_pay_type(name):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -338,7 +330,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await number_check(context, user_id, first_name, last_name):
         return
     
-    # Referal
     if context.args:
         ref_id = context.args[0]
         if ref_id.isdigit() and int(ref_id) != user_id:
@@ -413,7 +404,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.delete()
         return
     
-    # ===== ADMIN CALLBACKLAR =====
+    # ===== ADMIN =====
     if user_id == ADMIN_ID:
         if data == 'holat':
             valyuta = get_setting('valyuta', "so'm")
@@ -686,7 +677,6 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='HTML',
                 reply_markup=await get_main_menu(user_id)
             )
-            # Adminga xabar
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔔 Banlash", callback_data=f'block-{user_id}')],
                 [InlineKeyboardButton("✅ To'landi", callback_data=f'tolandi-{user_id}-{number}-{miqdor}'),
@@ -779,7 +769,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     step = user['step'] if user else ''
     
-    # ===== ORQA =====
     if text == "◀️ Orqaga":
         set_user_step(user_id, '')
         await update.message.reply_text(
@@ -789,7 +778,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # ===== PUL ISHLASH =====
     if text == "💵 Pul ishlash":
         bot_info = await context.bot.get_me()
         reflink = f"https://t.me/{bot_info.username}?start={user_id}"
@@ -798,7 +786,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(caption, parse_mode='HTML', reply_markup=keyboard)
         return
     
-    # ===== HISOBIM =====
     if text == "💰 Hisobim":
         valyuta = get_setting('valyuta', "so'm")
         text_cab = f"<b>🔑 Sizning ID raqamingiz:</b> <pre>{user_id}</pre>\n\n💵 <b>Asosiy balansingiz:</b> {user['balance']} {valyuta}\n👤 <b>Takliflaringiz soni:</b> {user['ref_count']} ta\n\n💳 <b>Yechib olgan pullaringiz:</b> {user['solved']} {valyuta}"
@@ -806,7 +793,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text_cab, parse_mode='HTML', reply_markup=keyboard)
         return
     
-    # ===== PULNI YECHISH =====
     if text == "🏦 Pulni yechish":
         pay_types = get_pay_types()
         if pay_types:
@@ -822,7 +808,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>To'lov tizimlari topilmadi!</b>", parse_mode='HTML')
         return
     
-    # ===== TO'LOVLAR KANALI =====
     if text == "📢 To'lovlar kanali":
         vazifa = get_setting('vazifa')
         if vazifa and vazifa != 'Kiritilmagan':
@@ -837,12 +822,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>To'lovlar kanali kiritilmagan!</b>", parse_mode='HTML')
         return
     
-    # ===== QO'LLANMA =====
     if text == "📚 Qo'llanma":
         await update.message.reply_text("<b>📚 Qo'llanma mavjud emas!</b>", parse_mode='HTML')
         return
     
-    # ===== MUROJAAT =====
     if text == "📨 Murojaat":
         await update.message.reply_text(
             "📝 <b>Murojaat matnini yuboring:</b>",
@@ -852,7 +835,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_user_step(user_id, 'yordam')
         return
     
-    # ===== MUROJAAT MATNI =====
     if step == 'yordam':
         await context.bot.send_message(
             ADMIN_ID,
@@ -949,8 +931,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>Yuboriladigan xabar turini tanlang;</b>", parse_mode='HTML', reply_markup=keyboard)
             return
     
-    # ===== STEP BO'YICHA =====
-    # iD
+    # ===== STEP =====
     if step == 'iD' and user_id == ADMIN_ID:
         if text == "🗄 Boshqarish":
             set_user_step(user_id, '')
@@ -973,7 +954,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>Foydalanuvchi topilmadi.\n\nQayta urinib ko'ring:</b>", parse_mode='HTML')
         return
     
-    # qo'shish
     if step == "qo'shish" and user_id == ADMIN_ID:
         if text == "🗄 Boshqarish":
             set_user_step(user_id, '')
@@ -986,7 +966,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>Kanalingiz useri yuboring:\n\nNamuna:</b> @ORGBuilder", parse_mode='HTML')
         return
     
-    # vazifa
     if step == 'vazifa' and user_id == ADMIN_ID:
         if text == "🗄 Boshqarish":
             set_user_step(user_id, '')
@@ -999,7 +978,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ <b>Kanal manzili kiritishda xatolik!\n\nQayta urinib ko'ring:</b>", parse_mode='HTML')
         return
     
-    # turi
     if step == 'turi' and user_id == ADMIN_ID:
         if text == "🗄 Boshqarish":
             set_user_step(user_id, '')
@@ -1009,7 +987,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_user_step(user_id, '')
         return
     
-    # taklifpul
     if step == 'taklifpul' and user_id == ADMIN_ID:
         if text == "🗄 Boshqarish":
             set_user_step(user_id, '')
@@ -1022,7 +999,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>Faqat raqam kiriting!</b>", parse_mode='HTML')
         return
     
-    # valyuta
     if step == 'valyuta' and user_id == ADMIN_ID:
         if text == "🗄 Boshqarish":
             set_user_step(user_id, '')
@@ -1032,7 +1008,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_user_step(user_id, '')
         return
     
-    # narx
     if step == 'narx' and user_id == ADMIN_ID:
         if text == "🗄 Boshqarish":
             set_user_step(user_id, '')
@@ -1045,7 +1020,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>Faqat raqam kiriting!</b>", parse_mode='HTML')
         return
     
-    # admin-user
     if step == 'admin-user' and user_id == ADMIN_ID:
         if text == "🗄 Boshqarish":
             set_user_step(user_id, '')
@@ -1055,7 +1029,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_user_step(user_id, '')
         return
     
-    # plus
     if step == 'plus' and user_id == ADMIN_ID:
         if text.isdigit():
             target_id = int(get_user_temp(user_id))
@@ -1067,7 +1040,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>Faqat raqamlardan foydalaning!</b>", parse_mode='HTML')
         return
     
-    # minus
     if step == 'minus' and user_id == ADMIN_ID:
         if text.isdigit():
             target_id = int(get_user_temp(user_id))
@@ -1079,7 +1051,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>Faqat raqamlardan foydalaning!</b>", parse_mode='HTML')
         return
     
-    # user
     if step == 'user' and user_id == ADMIN_ID:
         if text == "🗄 Boshqarish":
             set_user_step(user_id, '')
@@ -1092,7 +1063,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>Faqat raqamlardan foydalaning!</b>", parse_mode='HTML')
         return
     
-    # xabar
     if step == 'xabar' and user_id == ADMIN_ID:
         if text == "🗄 Boshqarish":
             set_user_step(user_id, '')
@@ -1104,7 +1074,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             set_user_step(user_id, '')
         return
     
-    # users
     if step == 'users' and user_id == ADMIN_ID:
         users = get_all_users()
         count = 0
@@ -1118,7 +1087,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_user_step(user_id, '')
         return
     
-    # wallet
     if step and step.startswith('wallet-'):
         wallet = step.split('-')[1]
         if text == "◀️ Orqaga":
@@ -1137,7 +1105,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>Hamyoningiz raqamini yuboring:</b>", parse_mode='HTML')
         return
     
-    # miqdor
     if step and step.startswith('miqdor-'):
         wallet = step.split('-')[1]
         if text == "◀️ Orqaga":
@@ -1195,7 +1162,6 @@ def main():
     
     application = Application.builder().token(TOKEN).build()
     
-    # Handlers
     application.add_handler(CommandHandler('start', start))
     application.add_handler(MessageHandler(filters.CONTACT, contact))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
