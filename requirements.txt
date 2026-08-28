@@ -1,2 +1,2 @@
-python-telegram-bot==22.8
-aiohttp==3.14.3
+aiogram>=2.25,<3.0
+aiosqlite>=0.19
