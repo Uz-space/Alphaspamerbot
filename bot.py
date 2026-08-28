@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 import asyncio
 
 # ============ KONFIG ============
-TOKEN = '8954102314:AAEVx-GpYc32S8HQWOrj-5A0R3iup09Cn68'
+TOKEN = '8954102314:AAEUrvXh5uDn7AnYC8Qgx0ecg_Jg-SNJFIc'
 ADMIN_ID = 8758410535
 
 DB_PATH = 'pulbot.db'
