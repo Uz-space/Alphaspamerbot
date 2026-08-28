@@ -241,9 +241,9 @@ def del_pay_type(name):
 # ============ MENU ============
 async def get_main_menu(user_id):
     keyboard = [
-        [KeyboardButton("💵 Pul ishlash")],
-        [KeyboardButton("🏦 Pul yechish"), KeyboardButton("💰 Hisobim")],
-        [KeyboardButton("📨 Murojaat"), KeyboardButton("🧾 To'lovlar tarixi")]
+        [KeyboardButton("💰 Pul ishlash")],
+        [KeyboardButton("💳 Pul yechish"), KeyboardButton("💵 Hisobim")],
+        [KeyboardButton("☎️ Murojaat"), KeyboardButton("🧾 To'lovlar tarixi")]
     ]
     if user_id == ADMIN_ID:
         keyboard.append([KeyboardButton("🗄 Boshqarish")])
@@ -770,7 +770,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    if text == "💵 Pul ishlash":
+    if text == "💰 Pul ishlash":
         bot_info = await context.bot.get_me()
         reflink = f"https://t.me/{bot_info.username}?start={user_id}"
         caption = f"<b>🔗 Sizning taklif havolangiz:</b>\n\n{reflink}\n\n<i>Yuqoridagi taklif havolangizni do'stlaringizga tarqating va har bir to'liq ro'yxatdan o'tgan taklifingiz uchun 250 so'm hisobingizga qo'shiladi.</i>"
@@ -778,14 +778,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(caption, parse_mode='HTML', reply_markup=keyboard)
         return
     
-    if text == "💰 Hisobim":
+    if text == "💵 Hisobim":
         valyuta = get_setting('valyuta', "so'm")
         text_cab = f"<b>🔑 Sizning ID raqamingiz:</b> <pre>{user_id}</pre>\n\n💵 <b>Asosiy balansingiz:</b> {user['balance']} {valyuta}\n👤 <b>Takliflaringiz soni:</b> {user['ref_count']} ta\n\n💳 <b>Yechib olgan pullaringiz:</b> {user['solved']} {valyuta}"
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🏦 Pul yechish", callback_data='yechish')]])
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💳 Pul yechish", callback_data='yechish')]])
         await update.message.reply_text(text_cab, parse_mode='HTML', reply_markup=keyboard)
         return
     
-    if text == "🏦 Pul yechish":
+    if text == "💳 Pul yechish":
         pay_types = get_pay_types()
         if pay_types:
             keyboard = []
@@ -814,7 +814,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>To'lovlar tarixi kanali kiritilmagan!</b>", parse_mode='HTML')
         return
     
-    if text == "📨 Murojaat":
+    if text == "☎️ Murojaat":
         await update.message.reply_text(
             "📝 <b>Murojaat matnini yuboring:</b>",
             parse_mode='HTML',
