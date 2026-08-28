@@ -240,21 +240,13 @@ def del_pay_type(name):
 
 # ============ MENU ============
 async def get_main_menu(user_id):
+    keyboard = [
+        [KeyboardButton("💵 Pul ishlash")],
+        [KeyboardButton("🏦 Pul yechish"), KeyboardButton("💰 Hisobim")],
+        [KeyboardButton("📨 Murojaat"), KeyboardButton("🧾 To'lovlar tarixi")]
+    ]
     if user_id == ADMIN_ID:
-        keyboard = [
-            [KeyboardButton("💵 Pul ishlash")],
-            [KeyboardButton("💰 Hisobim"), KeyboardButton("🏦 Pulni yechish")],
-            [KeyboardButton("📢 To'lovlar kanali")],
-            [KeyboardButton("📨 Murojaat"), KeyboardButton("📚 Qo'llanma")],
-            [KeyboardButton("🗄 Boshqarish")]
-        ]
-    else:
-        keyboard = [
-            [KeyboardButton("💵 Pul ishlash")],
-            [KeyboardButton("💰 Hisobim"), KeyboardButton("🏦 Pulni yechish")],
-            [KeyboardButton("📢 To'lovlar kanali")],
-            [KeyboardButton("📨 Murojaat"), KeyboardButton("📚 Qo'llanma")]
-        ]
+        keyboard.append([KeyboardButton("🗄 Boshqarish")])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 async def get_back_menu():
@@ -648,7 +640,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     show_alert=True
                 )
         else:
-            await query.answer("To'lovlar kanali ulanmagan!", show_alert=True)
+            await query.answer("To'lovlar tarixi kanali ulanmagan!", show_alert=True)
         return
     
     if data == 'bekor':
@@ -789,11 +781,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "💰 Hisobim":
         valyuta = get_setting('valyuta', "so'm")
         text_cab = f"<b>🔑 Sizning ID raqamingiz:</b> <pre>{user_id}</pre>\n\n💵 <b>Asosiy balansingiz:</b> {user['balance']} {valyuta}\n👤 <b>Takliflaringiz soni:</b> {user['ref_count']} ta\n\n💳 <b>Yechib olgan pullaringiz:</b> {user['solved']} {valyuta}"
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🏦 Pulni yechish", callback_data='yechish')]])
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🏦 Pul yechish", callback_data='yechish')]])
         await update.message.reply_text(text_cab, parse_mode='HTML', reply_markup=keyboard)
         return
     
-    if text == "🏦 Pulni yechish":
+    if text == "🏦 Pul yechish":
         pay_types = get_pay_types()
         if pay_types:
             keyboard = []
@@ -808,22 +800,18 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("<b>To'lov tizimlari topilmadi!</b>", parse_mode='HTML')
         return
     
-    if text == "📢 To'lovlar kanali":
+    if text == "🧾 To'lovlar tarixi":
         vazifa = get_setting('vazifa')
         if vazifa and vazifa != 'Kiritilmagan':
             kanal = vazifa.replace('@', '')
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📢 To'lovlar kanali", url=f"https://t.me/{kanal}")]])
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📢 Kanalga o'tish", url=f"https://t.me/{kanal}")]])
             await update.message.reply_text(
-                "<b>⤵️ Quyidagi kanal orqali to'lovlarni kuzatib boring:</b>",
+                "<b>🧾 To'lovlar tarixi kanali:</b>",
                 parse_mode='HTML',
                 reply_markup=keyboard
             )
         else:
-            await update.message.reply_text("<b>To'lovlar kanali kiritilmagan!</b>", parse_mode='HTML')
-        return
-    
-    if text == "📚 Qo'llanma":
-        await update.message.reply_text("<b>📚 Qo'llanma mavjud emas!</b>", parse_mode='HTML')
+            await update.message.reply_text("<b>To'lovlar tarixi kanali kiritilmagan!</b>", parse_mode='HTML')
         return
     
     if text == "📨 Murojaat":
