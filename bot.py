@@ -100,14 +100,14 @@ async def send_preview(target, ctx, uid: int, edit_msg=None):
     sticker = sess["stickers"][sess["idx"]]
     ext = sess["ext"]
 
+    # Avval sticker yuboriladi, keyin eski xabar o'chiriladi — bo'shliq yo'q
+    await target.reply_sticker(sticker=sticker.file_id, reply_markup=make_keyboard(uid))
+
     if edit_msg:
         try:
             await edit_msg.delete()
         except Exception:
             pass
-
-    # reply_sticker — hech narsa yuklanmaydi, file_id orqali darhol ishlaydi
-    await target.reply_sticker(sticker=sticker.file_id, reply_markup=make_keyboard(uid))
 
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -215,11 +215,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text("⚠️ Session expired. Please send the pack link again.")
             return
         sessions[uid]["idx"] = idx
+        # edit_msg yo'q — send_preview o'zi sticker yuborib wait ni o'chiradi
         wait = await query.message.reply_text("⏳")
-        try:
-            await query.message.delete()
-        except Exception:
-            pass
         await send_preview(query.message, ctx, uid, edit_msg=wait)
 
     elif data.startswith("jump:"):
