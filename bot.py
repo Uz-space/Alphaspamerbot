@@ -14,7 +14,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 
 # Bot tokenini o'zgartiring
 BOT_TOKEN = "8245157509:AAGeQpYiyS-VWLRnJmI655TR6IDhkyFJpv8"
-ADMIN_ID = 8758410535 # Admin Telegram ID
+ADMIN_ID = 8758410535
 
 # Papkalar
 UPLOAD_DIR = "uploads"
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # Ishga tushirilgan skriptlar
 running_scripts = {}
 script_processes = {}
-script_input_queues = {}  # Har bir skript uchun input queue
+script_input_queues = {}
 
 user_data_file = "user_data.json"
 
@@ -49,11 +49,8 @@ def save_user_data(data):
     with open(user_data_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# Skriptni input qabul qiladigan qilib ishga tushirish
 def run_script_with_input(script_path, user_id, script_name, context):
-    """Skriptni input qabul qiladigan qilib ishga tushiradi"""
     try:
-        # Skriptni alohida processda ishga tushirish
         process = subprocess.Popen(
             [sys.executable, str(script_path)],
             stdin=subprocess.PIPE,
@@ -61,8 +58,7 @@ def run_script_with_input(script_path, user_id, script_name, context):
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            universal_newlines=True,
-            preexec_fn=os.setsid if os.name != 'nt' else None
+            universal_newlines=True
         )
         
         script_key = f"{user_id}_{script_name}"
@@ -76,54 +72,38 @@ def run_script_with_input(script_path, user_id, script_name, context):
             "input_count": 0
         }
         
-        # Log faylini yaratish
         log_file = Path(LOGS_DIR) / f"{user_id}_{script_name}.log"
         
-        # Input yuborish uchun thread
         def input_handler():
             while True:
                 try:
                     if process.poll() is not None:
                         break
-                    
-                    # Queue dan input olish
                     try:
                         input_data = script_input_queues[script_key].get(timeout=0.1)
                         if input_data == "EXIT":
                             break
-                        
-                        # Inputni processga yozish
                         process.stdin.write(input_data + "\n")
                         process.stdin.flush()
-                        
                         running_scripts[script_key]["input_count"] += 1
-                        
-                        # Logga yozish
                         with open(log_file, 'a', encoding='utf-8') as f:
                             f.write(f"[INPUT] {input_data}\n")
-                            
                     except queue.Empty:
                         continue
-                        
                 except Exception as e:
                     logger.error(f"Input handler error: {e}")
                     break
         
-        # Output o'qish uchun thread
         def output_handler():
             while True:
                 try:
                     if process.poll() is not None:
                         break
-                    
-                    # stdout dan o'qish
                     stdout_line = process.stdout.readline()
                     if stdout_line:
                         with open(log_file, 'a', encoding='utf-8') as f:
                             f.write(f"[STDOUT] {stdout_line}")
                             f.flush()
-                        
-                        # Telegramga yuborish
                         try:
                             context.bot.send_message(
                                 chat_id=int(user_id),
@@ -132,15 +112,11 @@ def run_script_with_input(script_path, user_id, script_name, context):
                             )
                         except Exception as e:
                             logger.error(f"Telegram send error: {e}")
-                    
-                    # stderr dan o'qish
                     stderr_line = process.stderr.readline()
                     if stderr_line:
                         with open(log_file, 'a', encoding='utf-8') as f:
                             f.write(f"[STDERR] {stderr_line}")
                             f.flush()
-                        
-                        # Xatoliklarni Telegramga yuborish
                         try:
                             context.bot.send_message(
                                 chat_id=int(user_id),
@@ -149,26 +125,20 @@ def run_script_with_input(script_path, user_id, script_name, context):
                             )
                         except Exception as e:
                             logger.error(f"Telegram send error: {e}")
-                            
                 except Exception as e:
                     logger.error(f"Output handler error: {e}")
                     break
         
-        # Threadlarni ishga tushirish
         input_thread = threading.Thread(target=input_handler, daemon=True)
         output_thread = threading.Thread(target=output_handler, daemon=True)
         input_thread.start()
         output_thread.start()
         
-        # Process tugashini kutish
         process.wait()
         
-        # Statusni yangilash
         if script_key in running_scripts:
             running_scripts[script_key]["status"] = "stopped"
             running_scripts[script_key]["end_time"] = datetime.now().isoformat()
-            
-            # Xabar berish
             try:
                 context.bot.send_message(
                     chat_id=int(user_id),
@@ -184,7 +154,6 @@ def run_script_with_input(script_path, user_id, script_name, context):
         if script_key in running_scripts:
             running_scripts[script_key]["status"] = "error"
             running_scripts[script_key]["error"] = str(e)
-        
         try:
             context.bot.send_message(
                 chat_id=int(user_id),
@@ -198,7 +167,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = str(user.id)
     
-    # Foydalanuvchini ro'yxatga olish
     user_data = load_user_data()
     if user_id not in user_data:
         user_data[user_id] = {
@@ -248,7 +216,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     elif query.data == "my_scripts":
         user_data = load_user_data()
-        
         if user_id in user_data and user_data[user_id]["scripts"]:
             scripts = user_data[user_id]["scripts"]
             text = "📋 Sizning skriptlaringiz:\n\n"
@@ -261,46 +228,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     elif query.data == "run_script":
         user_data = load_user_data()
-        
         if user_id in user_data and user_data[user_id]["scripts"]:
             keyboard = []
             for script in user_data[user_id]["scripts"]:
                 if f"{user_id}_{script}" not in running_scripts or running_scripts[f"{user_id}_{script}"]["status"] != "running":
-                    keyboard.append([InlineKeyboardButton(
-                        f"▶️ {script}", 
-                        callback_data=f"run_{script}"
-                    )])
+                    keyboard.append([InlineKeyboardButton(f"▶️ {script}", callback_data=f"run_{script}")])
             if not keyboard:
                 keyboard.append([InlineKeyboardButton("ℹ️ Barcha skriptlar ishlayapti", callback_data="none")])
             keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_menu")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.edit_message_text(
-                "▶️ Ishga tushirmoqchi bo'lgan skriptni tanlang:",
-                reply_markup=reply_markup
-            )
+            await query.edit_message_text("▶️ Ishga tushirmoqchi bo'lgan skriptni tanlang:", reply_markup=reply_markup)
         else:
             await query.edit_message_text("❌ Sizda skriptlar mavjud emas.")
             
     elif query.data.startswith("run_"):
         script_name = query.data.replace("run_", "")
         script_path = Path(SCRIPTS_DIR) / user_id / script_name
-        
         if script_path.exists():
             if f"{user_id}_{script_name}" in running_scripts and running_scripts[f"{user_id}_{script_name}"]["status"] == "running":
                 await query.edit_message_text("⚠️ Bu skript allaqachon ishlayapti!")
                 return
-            
             await query.edit_message_text(f"⏳ {script_name} ishga tushirilmoqda...")
-            
-            # Skriptni input qabul qiladigan qilib ishga tushirish
             thread = threading.Thread(
                 target=run_script_with_input,
                 args=(script_path, user_id, script_name, context),
                 daemon=True
             )
             thread.start()
-            
             await query.message.reply_text(
                 f"✅ {script_name} muvaffaqiyatli ishga tushdi!\n\n"
                 f"🔄 Skript 24/7 ishlaydi va ma'lumot qabul qiladi\n"
@@ -312,24 +266,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     elif query.data == "send_input":
         user_data = load_user_data()
-        
         if user_id in user_data and user_data[user_id]["scripts"]:
             keyboard = []
             for script in user_data[user_id]["scripts"]:
                 if f"{user_id}_{script}" in running_scripts and running_scripts[f"{user_id}_{script}"]["status"] == "running":
-                    keyboard.append([InlineKeyboardButton(
-                        f"📤 {script}", 
-                        callback_data=f"input_{script}"
-                    )])
+                    keyboard.append([InlineKeyboardButton(f"📤 {script}", callback_data=f"input_{script}")])
             if not keyboard:
                 keyboard.append([InlineKeyboardButton("ℹ️ Ishlamayotgan skriptlar", callback_data="none")])
             keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_menu")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.edit_message_text(
-                "📤 Qaysi skriptga ma'lumot yubormoqchisiz?",
-                reply_markup=reply_markup
-            )
+            await query.edit_message_text("📤 Qaysi skriptga ma'lumot yubormoqchisiz?", reply_markup=reply_markup)
         else:
             await query.edit_message_text("❌ Sizda skriptlar mavjud emas.")
             
@@ -337,7 +283,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         script_name = query.data.replace("input_", "")
         context.user_data['input_script'] = script_name
         context.user_data['waiting_for_input'] = True
-        
         await query.edit_message_text(
             f"📤 *{script_name}* skriptiga ma'lumot yuborish.\n\n"
             f"💬 Iltimos, yubormoqchi bo'lgan ma'lumotni matn sifatida yozing.\n"
@@ -347,47 +292,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     elif query.data == "stop_script":
         user_data = load_user_data()
-        
         if user_id in user_data and user_data[user_id]["scripts"]:
             keyboard = []
             for script in user_data[user_id]["scripts"]:
                 if f"{user_id}_{script}" in running_scripts and running_scripts[f"{user_id}_{script}"]["status"] == "running":
-                    keyboard.append([InlineKeyboardButton(
-                        f"⏹ {script}", 
-                        callback_data=f"stop_{script}"
-                    )])
+                    keyboard.append([InlineKeyboardButton(f"⏹ {script}", callback_data=f"stop_{script}")])
             if not keyboard:
                 keyboard.append([InlineKeyboardButton("ℹ️ Ishlamayotgan skriptlar", callback_data="none")])
             keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_menu")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.edit_message_text(
-                "⏹ To'xtatmoqchi bo'lgan skriptni tanlang:",
-                reply_markup=reply_markup
-            )
+            await query.edit_message_text("⏹ To'xtatmoqchi bo'lgan skriptni tanlang:", reply_markup=reply_markup)
         else:
             await query.edit_message_text("❌ Sizda skriptlar mavjud emas.")
             
     elif query.data.startswith("stop_"):
         script_name = query.data.replace("stop_", "")
         script_key = f"{user_id}_{script_name}"
-        
         if script_key in running_scripts:
             process = running_scripts[script_key]["process"]
             try:
-                # Processni to'xtatish
-                if os.name != 'nt':  # Linux/Mac
-                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-                else:  # Windows
-                    process.terminate()
-                
+                process.terminate()
                 running_scripts[script_key]["status"] = "stopped"
                 running_scripts[script_key]["end_time"] = datetime.now().isoformat()
-                
-                # Queue ni tozalash
                 if script_key in script_input_queues:
                     script_input_queues[script_key].put("EXIT")
-                
                 await query.edit_message_text(f"⏹ {script_name} to'xtatildi!")
             except Exception as e:
                 await query.edit_message_text(f"❌ Xatolik: {str(e)}")
@@ -396,7 +324,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     elif query.data == "check_status":
         user_data = load_user_data()
-        
         if user_id in user_data and user_data[user_id]["scripts"]:
             text = "📊 **Skriptlar holati:**\n\n"
             for script in user_data[user_id]["scripts"]:
@@ -420,106 +347,69 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     elif query.data == "view_log":
         user_data = load_user_data()
-        
         if user_id in user_data and user_data[user_id]["scripts"]:
             keyboard = []
             for script in user_data[user_id]["scripts"]:
                 log_file = Path(LOGS_DIR) / f"{user_id}_{script}.log"
                 if log_file.exists():
-                    keyboard.append([InlineKeyboardButton(
-                        f"📄 {script}", 
-                        callback_data=f"log_{script}"
-                    )])
+                    keyboard.append([InlineKeyboardButton(f"📄 {script}", callback_data=f"log_{script}")])
             if not keyboard:
                 keyboard.append([InlineKeyboardButton("ℹ️ Log fayllar mavjud emas", callback_data="none")])
             keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_menu")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.edit_message_text(
-                "📄 Log faylini ko'rmoqchi bo'lgan skriptni tanlang:",
-                reply_markup=reply_markup
-            )
+            await query.edit_message_text("📄 Log faylini ko'rmoqchi bo'lgan skriptni tanlang:", reply_markup=reply_markup)
         else:
             await query.edit_message_text("❌ Sizda skriptlar mavjud emas.")
             
     elif query.data.startswith("log_"):
         script_name = query.data.replace("log_", "")
         log_file = Path(LOGS_DIR) / f"{user_id}_{script_name}.log"
-        
         if log_file.exists():
             with open(log_file, 'r', encoding='utf-8') as f:
                 content = f.read()
-                
             if len(content) > 4000:
                 content = content[-4000:] + "\n\n... (oxirgi 4000 belgi)"
-            
-            await query.edit_message_text(
-                f"📄 **{script_name} log fayli:**\n\n```\n{content}\n```",
-                parse_mode="Markdown"
-            )
+            await query.edit_message_text(f"📄 **{script_name} log fayli:**\n\n```\n{content}\n```", parse_mode="Markdown")
         else:
             await query.edit_message_text("❌ Log fayl topilmadi!")
             
     elif query.data == "delete_script":
         user_data = load_user_data()
-        
         if user_id in user_data and user_data[user_id]["scripts"]:
             keyboard = []
             for script in user_data[user_id]["scripts"]:
-                keyboard.append([InlineKeyboardButton(
-                    f"❌ {script}", 
-                    callback_data=f"del_{script}"
-                )])
+                keyboard.append([InlineKeyboardButton(f"❌ {script}", callback_data=f"del_{script}")])
             keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_menu")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.edit_message_text(
-                "🗑 O'chirmoqchi bo'lgan skriptni tanlang:",
-                reply_markup=reply_markup
-            )
+            await query.edit_message_text("🗑 O'chirmoqchi bo'lgan skriptni tanlang:", reply_markup=reply_markup)
         else:
             await query.edit_message_text("❌ Sizda skriptlar mavjud emas.")
             
     elif query.data.startswith("del_"):
         script_name = query.data.replace("del_", "")
         script_key = f"{user_id}_{script_name}"
-        
-        # Avval to'xtatish
         if script_key in running_scripts and running_scripts[script_key]["status"] == "running":
             try:
                 process = running_scripts[script_key]["process"]
-                if os.name != 'nt':
-                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-                else:
-                    process.terminate()
-                
+                process.terminate()
                 if script_key in script_input_queues:
                     script_input_queues[script_key].put("EXIT")
             except:
                 pass
-        
-        # Faylni o'chirish
         script_path = Path(SCRIPTS_DIR) / user_id / script_name
         if script_path.exists():
             script_path.unlink()
-            
-            # Log faylni o'chirish
             log_file = Path(LOGS_DIR) / f"{user_id}_{script_name}.log"
             if log_file.exists():
                 log_file.unlink()
-            
-            # Foydalanuvchi ma'lumotlarini yangilash
             user_data = load_user_data()
             if user_id in user_data and script_name in user_data[user_id]["scripts"]:
                 user_data[user_id]["scripts"].remove(script_name)
                 save_user_data(user_data)
-            
-            # Running scripts dan o'chirish
             if script_key in running_scripts:
                 del running_scripts[script_key]
             if script_key in script_input_queues:
                 del script_input_queues[script_key]
-            
             await query.edit_message_text(f"✅ {script_name} o'chirildi!")
         else:
             await query.edit_message_text("❌ Skript topilmadi!")
@@ -538,8 +428,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚠️ **Muhim:**\n"
             "• Skriptlar `input()` yoki `sys.stdin.read()` orqali ma'lumot qabul qilishi kerak\n"
             "• Ma'lumotlar jonli ravishda skriptga uzatiladi\n"
-            "• Skript javoblari Telegramga jonli yuboriladi\n"
-            "• Har bir foydalanuvchi o'z skriptlarini boshqaradi",
+            "• Skript javoblari Telegramga jonli yuboriladi",
             parse_mode="Markdown"
         )
         
@@ -547,18 +436,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Foydalanuvchi matn yuborganida ishlaydi"""
     user_id = str(update.effective_user.id)
     message_text = update.message.text
     
-    # Cancel buyrug'i
     if message_text == "/cancel":
         context.user_data['waiting_for_input'] = False
         context.user_data['input_script'] = None
         await update.message.reply_text("⏹ Ma'lumot yuborish bekor qilindi.")
         return
     
-    # Input kutish holati
     if context.user_data.get('waiting_for_input'):
         script_name = context.user_data.get('input_script')
         if not script_name:
@@ -566,34 +452,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         script_key = f"{user_id}_{script_name}"
-        
         if script_key not in script_input_queues:
             await update.message.reply_text("❌ Skript ishlamayapti yoki topilmadi!")
             return
         
         try:
-            # Ma'lumotni queue ga qo'shish
             script_input_queues[script_key].put(message_text)
-            
-            # Foydalanuvchiga javob
             await update.message.reply_text(
                 f"✅ Ma'lumot *{script_name}* skriptiga yuborildi!\n\n"
-                f"📤 Yuborilgan: `{message_text}`\n"
-                f"🔄 Skript javobi tez orada keladi.",
+                f"📤 Yuborilgan: `{message_text}`",
                 parse_mode="Markdown"
             )
-            
-            # Holatni yangilash
             if script_key in running_scripts:
                 running_scripts[script_key]["input_count"] = running_scripts[script_key].get("input_count", 0) + 1
-            
-            # Keyingi ma'lumot uchun kutish
             context.user_data['waiting_for_input'] = True
-            
         except Exception as e:
             await update.message.reply_text(f"❌ Xatolik: {str(e)}")
     else:
-        # Oddiy xabar
         await update.message.reply_text(
             "ℹ️ Men faqat skriptlarga ma'lumot yuborish uchun xizmat qilaman.\n"
             "📌 Iltimos, /start buyrug'ini bosing yoki tugmalardan foydalaning."
@@ -612,30 +487,24 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     file_name = document.file_name
     
-    # Faylni saqlash
     user_script_dir = Path(SCRIPTS_DIR) / user_id
     user_script_dir.mkdir(exist_ok=True)
-    
     file_path = user_script_dir / file_name
     
     try:
         file = await document.get_file()
         await file.download_to_drive(file_path)
-        
-        # Foydalanuvchi ma'lumotlarini yangilash
         user_data = load_user_data()
         if user_id in user_data:
             if file_name not in user_data[user_id]["scripts"]:
                 user_data[user_id]["scripts"].append(file_name)
                 save_user_data(user_data)
-        
         context.user_data['waiting_for_script'] = False
         await update.message.reply_text(
             f"✅ {file_name} muvaffaqiyatli yuklandi!\n\n"
             f"📊 Skript hajmi: {document.file_size} bayt\n"
             f"▶️ Endi skriptni ishga tushirishingiz mumkin."
         )
-        
     except Exception as e:
         await update.message.reply_text(f"❌ Xatolik: {str(e)}")
 
@@ -647,15 +516,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📌 **Buyruqlar:**\n"
         "/start - Boshlash\n"
         "/help - Yordam\n"
-        "/cancel - Ma'lumot yuborishni bekor qilish\n\n"
-        "💡 Skriptlar `input()` yoki `sys.stdin.read()` orqali ma'lumot qabul qilishi kerak.",
+        "/cancel - Ma'lumot yuborishni bekor qilish",
         parse_mode="Markdown"
     )
 
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Handlerlar
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("cancel", help_command))
@@ -667,7 +534,7 @@ def main():
     print(f"📁 Skriptlar papkasi: {SCRIPTS_DIR}")
     print(f"📁 Loglar papkasi: {LOGS_DIR}")
     print("📤 Skriptlarga ma'lumot yuborish tayyor!")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
