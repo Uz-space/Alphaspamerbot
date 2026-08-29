@@ -63,6 +63,32 @@ def make_keyboard(uid: int) -> InlineKeyboardMarkup:
     ])
 
 
+async def send_preview(target, ctx, uid: int, edit_msg=None):
+    sess = sessions[uid]
+    sticker = sess["stickers"][sess["idx"]]
+    ext = sess["ext"]
+
+    tg_file = await ctx.bot.get_file(sticker.file_id)
+    fb = bytes(await tg_file.download_as_bytearray())
+    buf = io.BytesIO(fb)
+
+    if ext == ".webm":
+        buf.name = "emoji.webm"
+        await target.reply_video(video=buf, reply_markup=make_keyboard(uid))
+    elif ext == ".tgs":
+        buf.name = "emoji.tgs"
+        await target.reply_animation(animation=buf, reply_markup=make_keyboard(uid))
+    else:
+        buf.name = "emoji.webp"
+        await target.reply_document(document=buf, filename="emoji.webp", reply_markup=make_keyboard(uid))
+
+    if edit_msg:
+        try:
+            await edit_msg.delete()
+        except Exception:
+            pass
+
+
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 <b>Emoji Pack Downloader</b>\n\n"
@@ -103,7 +129,7 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
         sess["awaiting_jump"] = False
         sess["idx"] = num - 1
-        await msg.reply_sticker(sticker=sess["stickers"][num - 1].file_id, reply_markup=make_keyboard(uid))
+        await send_preview(msg, ctx, uid)
         return
 
     # Pack link
@@ -127,7 +153,7 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     sessions[uid] = {"pack_name": pack_name, "stickers": stickers, "title": sticker_set.title, "ext": ext, "idx": 0, "awaiting_jump": False}
 
     await wait.delete()
-    await msg.reply_sticker(sticker=stickers[0].file_id, reply_markup=make_keyboard(uid))
+    await send_preview(update.message, ctx, uid)
 
 
 async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -145,7 +171,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text("⚠️ Session expired. Send the pack link again.")
             return
         sessions[uid]["idx"] = idx
-        await query.message.reply_sticker(sticker=sessions[uid]["stickers"][idx].file_id, reply_markup=make_keyboard(uid))
+        await send_preview(query.message, ctx, uid)
 
     elif data.startswith("jump:"):
         _, uid = data.split(":")
