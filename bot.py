@@ -95,10 +95,10 @@ bg_gr = "\033[48;5;240m"
 # ==========================================================
 
 # O'ZGARTIRING! @BotFather dan olingan token
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8856631856:AAE3fSYI4zfF3KP0EpugrzvYv9u7NXbsfgI")
 
 # O'ZGARTIRING! @userinfobot dan olingan ID
-ADMIN_ID = int(os.environ.get("ADMIN_ID", 123456789))
+ADMIN_ID = int(os.environ.get("ADMIN_ID", 8758410535))
 
 # Logging sozlamalari
 logging.basicConfig(
