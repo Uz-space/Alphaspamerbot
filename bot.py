@@ -628,7 +628,7 @@ class TronBot:
         self.is_running = False
         self.last_balance = "0"
         self.last_api_balance = "0"
-        self.last_username = "Noma'lum"
+        self.last_username = "Noma\'lum"
         self.start_time = time.time()
 
     def headers(self):
@@ -916,7 +916,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏳ Bonus yig'ilmoqda...", reply_markup=await get_main_keyboard())
         result = bot_manager.claim_bonus()
         if result['success']:
-            text = f"✅ {result['message']}\n💰 Balance: {result.get('balance', 'Noma'lum')}"
+            text = f"✅ {result['message']}\n💰 Balance: {result.get('balance', 'Noma\'lum')}"
             if result.get('num'):
                 text += f"\n🎰 Number: {result['num']}"
         else:
@@ -927,7 +927,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏳ Hourly bonus yig'ilmoqda...", reply_markup=await get_main_keyboard())
         result = bot_manager.claim_hourly()
         if result['success']:
-            text = f"✅ {result['message']}\n💰 Balance: {result.get('balance', 'Noma'lum')}"
+            text = f"✅ {result['message']}\n💰 Balance: {result.get('balance', 'Noma\'lum')}"
         else:
             text = f"❌ {result['message']}"
         await query.edit_message_text(text, reply_markup=await get_main_keyboard())
