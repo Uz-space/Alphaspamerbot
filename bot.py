@@ -100,10 +100,6 @@ async def send_preview(target, ctx, uid: int, edit_msg=None):
     sticker = sess["stickers"][sess["idx"]]
     ext = sess["ext"]
 
-    tg_file = await ctx.bot.get_file(sticker.file_id)
-    fb = bytes(await tg_file.download_as_bytearray())
-    buf = io.BytesIO(fb)
-
     if edit_msg:
         try:
             await edit_msg.delete()
@@ -112,15 +108,13 @@ async def send_preview(target, ctx, uid: int, edit_msg=None):
 
     kwargs = dict(caption=make_caption(uid), parse_mode="HTML", reply_markup=make_keyboard(uid))
 
+    # file_id ni to'g'ridan yuborish — yuklab olish kerak emas, darhol ishlaydi
     if ext == ".webm":
-        buf.name = "emoji.webm"
-        await target.reply_video(video=buf, **kwargs)
+        await target.reply_video(video=sticker.file_id, **kwargs)
     elif ext == ".tgs":
-        buf.name = "emoji.tgs"
-        await target.reply_animation(animation=buf, **kwargs)
+        await target.reply_animation(animation=sticker.file_id, **kwargs)
     else:
-        buf.name = "emoji.webp"
-        await target.reply_document(document=buf, filename="preview.webp", **kwargs)
+        await target.reply_document(document=sticker.file_id, **kwargs)
 
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -370,7 +364,9 @@ def main():
         print("❌ BOT_TOKEN is not set!\n   export BOT_TOKEN='your_token_here'")
         return
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    from telegram.request import HTTPXRequest
+    request = HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30, pool_timeout=30)
+    app = Application.builder().token(BOT_TOKEN).request(request).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
