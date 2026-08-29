@@ -2,1133 +2,732 @@
 # -*- coding: utf-8 -*-
 
 import os
+import re
 import sys
-import json
 import time
-import threading
+import json
+import base64
 import subprocess
-from datetime import datetime
-from typing import Dict, Any, Optional
+import tempfile
+import threading
 import logging
+from datetime import datetime
+from urllib.parse import urlencode, urlparse, quote_plus
+from typing import Dict, Any, Optional
 
-# Telegram bot uchun kutubxona
+import requests as _http
+import urllib3
+
+# Telegram bot
 try:
     from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 except ImportError:
-    os.system("pip install python-telegram-bot==20.7 --break-system-packages")
+    os.system("pip install python-telegram-bot==20.7")
     from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
-# Asosiy TRON botni import qilish
-from tron import Bot as TronBot, Functions, Display, host, title, versi, Captcha, Iewil
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ==========================================================
-#                       KONFIGURATSIYA
+#                       KONSTANTALAR
+# ==========================================================
+BOT_TOKEN = "8245157509:AAGeQpYiyS-VWLRnJmI655TR6IDhkyFJpv8"
+
+title = "TRON"
+versi = "1.0.8"
+class_require = "1.1.7"
+host = "https://tronpick.io/"
+turnstile = ""
+recaptcha = "6LeBFBclAAAAANoZIrwXU1cPgYDDM7f1ehHpzXWj"
+hcaptcha = ""
+class_version = "1.1.7"
+
+# Warna teks
+n = "\n"
+d = "\033[0m"
+m = "\033[1;31m"
+h = "\033[1;32m"
+k = "\033[1;33m"
+b = "\033[1;34m"
+u = "\033[1;35m"
+c = "\033[1;36m"
+p = "\033[1;37m"
+o = "\033[38;5;214m"
+
+# ==========================================================
+#                       YORDAMCHI
+# ==========================================================
+def safe_json_loads(s, debug_tag="response"):
+    if s is None:
+        return None
+    text = s.strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    try:
+        obj, _end = json.JSONDecoder().raw_decode(text)
+        return obj
+    except json.JSONDecodeError:
+        try:
+            with open(f"debug_{debug_tag}.txt", "w", encoding="utf-8") as f:
+                f.write(text)
+        except Exception:
+            pass
+        return None
+
+# ==========================================================
+#                       REQUESTS
+# ==========================================================
+class Requests:
+    @staticmethod
+    def Curl(url, header=0, post=0, data_post=0, cookie=0, proxy=0, skip=0):
+        while True:
+            header_file = None
+            body_file = None
+            try:
+                hf = tempfile.NamedTemporaryFile(delete=False, suffix=".hdr")
+                header_file = hf.name
+                hf.close()
+                bf = tempfile.NamedTemporaryFile(delete=False, suffix=".body")
+                body_file = bf.name
+                bf.close()
+
+                cmd = ["curl", "-s", "-k", "-L", "--connect-timeout", "30", "-D", header_file, "-o", body_file]
+
+                if header:
+                    for hline in header:
+                        cmd += ["-H", hline]
+                if cookie:
+                    cmd += ["-b", cookie, "-c", cookie]
+                if proxy:
+                    cmd += ["--proxytunnel", "-x", proxy]
+                if post:
+                    cmd += ["-X", "POST"]
+                    if data_post:
+                        cmd += ["--data-raw", data_post]
+                cmd.append(url)
+
+                try:
+                    result = subprocess.run(cmd, capture_output=True, timeout=45)
+                except FileNotFoundError:
+                    print("curl dasturi topilmadi!")
+                    time.sleep(3)
+                    continue
+                except subprocess.TimeoutExpired:
+                    print("Check your Connection!")
+                    time.sleep(2)
+                    continue
+
+                if result.returncode != 0:
+                    time.sleep(2)
+                    continue
+
+                with open(header_file, "r", errors="ignore") as f:
+                    head_raw = f.read()
+                with open(body_file, "rb") as f:
+                    body_bytes = f.read()
+
+                if skip:
+                    return None
+
+                blocks = [blk for blk in head_raw.split("\r\n\r\n") if blk.strip()]
+                head_lines = blocks[-1] if blocks else head_raw.strip()
+                body = body_bytes.decode("utf-8", errors="replace")
+
+                if not body:
+                    print("Check your Connection!")
+                    time.sleep(2)
+                    continue
+
+                return [head_lines, body]
+            finally:
+                for fpath in (header_file, body_file):
+                    if fpath and os.path.exists(fpath):
+                        try:
+                            os.unlink(fpath)
+                        except Exception:
+                            pass
+
+    @staticmethod
+    def get(url, head=0):
+        return Requests.Curl(url, head)
+
+    @staticmethod
+    def post(url, head=0, data_post=0):
+        return Requests.Curl(url, head, 1, data_post)
+
+# ==========================================================
+#                       DISPLAY
+# ==========================================================
+class Display:
+    @staticmethod
+    def Error(except_):
+        return f"{m}---[{p}!{m}] {p}{except_}"
+
+    @staticmethod
+    def Sukses(msg):
+        return f"{h}---[{p}\u2713{h}] {p}{msg}{n}"
+
+# ==========================================================
+#                       FUNCTIONS
+# ==========================================================
+class Functions:
+    configFile = "tronpick_config.json"
+
+    @staticmethod
+    def _load_config():
+        if not os.path.exists(Functions.configFile):
+            return {}
+        try:
+            with open(Functions.configFile, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _save_config(config):
+        with open(Functions.configFile, "w") as f:
+            json.dump(config, f, indent=4)
+
+    @staticmethod
+    def setConfig(key):
+        config = Functions._load_config()
+        if key in config:
+            return config[key]
+        return None
+
+    @staticmethod
+    def removeConfig(key):
+        config = Functions._load_config()
+        if key in config:
+            del config[key]
+        Functions._save_config(config)
+
+    @staticmethod
+    def getConfig(key):
+        config = Functions._load_config()
+        return config.get(key)
+
+# ==========================================================
+#                       HTMLSCRAP
+# ==========================================================
+class HtmlScrap:
+    def __init__(self):
+        self.captcha_re = r'class=["\']([^"\']+)["\'][^>]*data-sitekey=["\']([^"\']+)["\']'
+
+    def Result(self, html, form=1):
+        data = {}
+        data["cloudflare"] = bool(re.search(r"Just a moment\.\.\.", html))
+        data["captcha"] = self._getCaptcha(html)
+        
+        response = {}
+        if "icon: 'success'" in html:
+            parts = html.split("icon: 'success',")
+            if len(parts) > 1:
+                inner = parts[1].split("html: '")
+                if len(inner) > 1:
+                    response["success"] = re.sub(r"<[^>]+>", "", inner[1].split("'")[0])
+        else:
+            warning_parts = html.split("html: '")
+            if len(warning_parts) > 1:
+                response["warning"] = warning_parts[1].split("'")[0]
+            else:
+                response["warning"] = "Not Found"
+        
+        data["response"] = response
+        return data
+
+    def _getCaptcha(self, html):
+        matches = re.findall(self.captcha_re, html, flags=re.IGNORECASE)
+        data = {}
+        for cls, sitekey in matches:
+            data[cls] = sitekey
+        return data
+
+# ==========================================================
+#                       CAPTCHA
+# ==========================================================
+class Captcha:
+    def __init__(self):
+        self.url = "http://api.multibot.in/"
+        self.key = "test"
+        self.provider = "Multibot"
+
+    def getBalance(self):
+        try:
+            res = json.loads(_http.get(self.url + "res.php?action=userinfo&key=" + self.key, timeout=30).text)
+            return res.get("balance")
+        except:
+            return 0
+
+    def RecaptchaV2(self, sitekey, pageurl):
+        data = urlencode({"method": "userrecaptcha", "sitekey": sitekey, "pageurl": pageurl})
+        return self._getResult(data, "GET")
+
+    def _getResult(self, data, method, header=0):
+        get_res = self._in_api(data, method, header)
+        get_in = get_res if isinstance(get_res, dict) else json.loads(get_res or "{}")
+        if not get_in.get("status"):
+            return 0
+        a = 0
+        while True:
+            get_res = self._res_api(get_in["request"])
+            if get_res.get("request") == "CAPCHA_NOT_READY":
+                a += 5
+                if a > 99:
+                    a = 99
+                continue
+            if get_res.get("status"):
+                return get_res["request"]
+            return 0
+
+    def _in_api(self, content, method, header=0):
+        param = f"key={self.key}&json=1&{content}"
+        try:
+            return json.loads(_http.get(self.url + "in.php?" + param, timeout=30).text)
+        except Exception:
+            return None
+
+    def _res_api(self, api_id):
+        params = f"?key={self.key}&action=get&id={api_id}&json=1"
+        try:
+            return json.loads(_http.get(self.url + "res.php" + params, timeout=30).text)
+        except Exception:
+            return {}
+
+# ==========================================================
+#                       TRON BOT
+# ==========================================================
+class TronBot:
+    def __init__(self):
+        self.cookie = ""
+        self.uagent = ""
+        self.captcha = Captcha()
+        self.scrap = HtmlScrap()
+
+    def headers(self):
+        return [
+            "Host: " + urlparse(host).hostname,
+            "cookie: " + self.cookie,
+            "X-Requested-With: XMLHttpRequest",
+            "user-agent: " + self.uagent,
+        ]
+
+    def Dashboard(self):
+        r = Requests.get(host, self.headers())[1]
+        data = {}
+        data["cloudflare"] = 1 if re.search(r"Just a moment\.\.\.", r) else 0
+        data["Login"] = "" if re.search(r"login_button", r) else 1
+        
+        try:
+            data["Username"] = r.split("&username=")[1].split("&")[0].strip()
+        except:
+            data["Username"] = None
+            
+        try:
+            data["Balance"] = r.split('class="drop_down_header_text user_balance">')[1].split("<")[0]
+        except:
+            data["Balance"] = "0"
+            
+        try:
+            data["Level"] = r.split("Your level is  <b>")[1].split("</b>")[0]
+        except:
+            data["Level"] = "N/A"
+            
+        return data
+
+    def ClaimBonus(self):
+        r = Requests.get(host + "faucet.php", self.headers())
+        cookies = {}
+        set_cookie_matches = re.findall(r"^Set-Cookie:\s*([^;]*)", r[0], flags=re.MULTILINE | re.IGNORECASE)
+        for item in set_cookie_matches:
+            if "=" in item:
+                key_, val_ = item.split("=", 1)
+                cookies[key_] = val_
+        
+        data = "action=claim_bonus_faucet&csrf_test_name=" + cookies.get("csrf_cookie_name", "")
+        r2 = safe_json_loads(Requests.post(host + "process.php", self.headers(), data)[1], "claim_bonus")
+        if r2 and r2.get("ret"):
+            return True, r2.get("mes", "Bonus yig'ildi!")
+        return False, r2.get("mes", "Xatolik") if r2 else "Xatolik"
+
+    def HourlyFaucet(self):
+        r = Requests.get(host + "faucet.php", self.headers())
+        cek = self.scrap.Result(r[1])
+        if cek.get("cloudflare"):
+            return False, "Cloudflare"
+            
+        cookies = {}
+        set_cookie_matches = re.findall(r"^Set-Cookie:\s*([^;]*)", r[0], flags=re.MULTILINE | re.IGNORECASE)
+        for item in set_cookie_matches:
+            if "=" in item:
+                key_, val_ = item.split("=", 1)
+                cookies[key_] = val_
+
+        cap = self.captcha.RecaptchaV2(recaptcha, host + "faucet.php")
+        if not cap:
+            return False, "Captcha xatolik"
+            
+        data = "action=claim_hourly_faucet&g-recaptcha-response=" + cap + "&h-captcha-response=null&captcha=&ft=&csrf_test_name=" + cookies.get("csrf_cookie_name", "")
+        r2 = safe_json_loads(Requests.post(host + "process.php", self.headers(), data)[1], "hourly_faucet")
+        
+        if r2 and r2.get("ret"):
+            return True, r2.get("mes", "Hourly bonus yig'ildi!")
+        return False, r2.get("mes", "Xatolik") if r2 else "Xatolik"
+
+# ==========================================================
+#                       TELEGRAM BOT
 # ==========================================================
 CONFIG_FILE = "telegram_config.json"
-BOT_TOKEN = "8245157509:AAGeQpYiyS-VWLRnJmI655TR6IDhkyFJpv8"  # O'z tokenizni qo'ying
-ADMIN_IDS = []  # Admin ID lar ro'yxati: [123456789, 987654321]
 
-# Logging sozlamalari
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# Papkalar
+os.makedirs("config", exist_ok=True)
+os.makedirs("sessions", exist_ok=True)
 
-# ==========================================================
-#                       API KONFIGURATSIYA
-# ==========================================================
-API_TYPES = {
-    "multibot": {
-        "name": "Multibot",
-        "url": "http://api.multibot.in/",
-        "key_required": True,
-        "balance_endpoint": "res.php?action=userinfo&key={key}"
-    },
-    "xevil": {
-        "name": "Xevil",
-        "url": "https://sctg.xyz/",
-        "key_required": True,
-        "balance_endpoint": "res.php?action=userinfo&key={key}"
-    },
-    "iewil": {
-        "name": "Iewil",
-        "url": "https://iewilbot.my.id/res.php",
-        "key_required": True,
-        "balance_endpoint": None
-    },
-    "2captcha": {
-        "name": "2Captcha",
-        "url": "https://2captcha.com/",
-        "key_required": True,
-        "balance_endpoint": "res.php?action=getbalance&key={key}"
-    },
-    "capsolver": {
-        "name": "CapSolver",
-        "url": "https://api.capsolver.com/",
-        "key_required": True,
-        "balance_endpoint": "getBalance?apiKey={key}"
-    },
-    "anticaptcha": {
-        "name": "AntiCaptcha",
-        "url": "https://api.anti-captcha.com/",
-        "key_required": True,
-        "balance_endpoint": "getBalance"
-    }
-}
-
-# ==========================================================
-#                       YORDAMCHI FUNKSIYALAR
-# ==========================================================
-def load_config() -> Dict[str, Any]:
-    """Telegram konfiguratsiyasini yuklash"""
+def load_tg_config():
     if not os.path.exists(CONFIG_FILE):
-        return {"users": {}, "sessions": {}, "apis": {}}
+        return {"users": {}, "sessions": {}}
     try:
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     except:
-        return {"users": {}, "sessions": {}, "apis": {}}
+        return {"users": {}, "sessions": {}}
 
-def save_config(config: Dict[str, Any]) -> None:
-    """Telegram konfiguratsiyasini saqlash"""
+def save_tg_config(config):
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=4)
 
-def is_admin(user_id: int) -> bool:
-    """Foydalanuvchi admin ekanligini tekshirish"""
-    if not ADMIN_IDS:
-        return True
-    return user_id in ADMIN_IDS
-
-def get_user_session(user_id: int) -> Optional[Dict[str, Any]]:
-    """Foydalanuvchi sessiyasini olish"""
-    config = load_config()
+def get_session(user_id):
+    config = load_tg_config()
     return config.get("sessions", {}).get(str(user_id))
 
-def set_user_session(user_id: int, session_data: Dict[str, Any]) -> None:
-    """Foydalanuvchi sessiyasini saqlash"""
-    config = load_config()
+def set_session(user_id, data):
+    config = load_tg_config()
     if "sessions" not in config:
         config["sessions"] = {}
-    config["sessions"][str(user_id)] = session_data
-    save_config(config)
+    config["sessions"][str(user_id)] = data
+    save_tg_config(config)
 
-def remove_user_session(user_id: int) -> None:
-    """Foydalanuvchi sessiyasini o'chirish"""
-    config = load_config()
+def remove_session(user_id):
+    config = load_tg_config()
     if "sessions" in config and str(user_id) in config["sessions"]:
         del config["sessions"][str(user_id)]
-        save_config(config)
+        save_tg_config(config)
 
-def get_user_api(user_id: int) -> Optional[Dict[str, Any]]:
-    """Foydalanuvchi API ma'lumotlarini olish"""
-    config = load_config()
-    return config.get("apis", {}).get(str(user_id))
-
-def set_user_api(user_id: int, api_data: Dict[str, Any]) -> None:
-    """Foydalanuvchi API ma'lumotlarini saqlash"""
-    config = load_config()
-    if "apis" not in config:
-        config["apis"] = {}
-    config["apis"][str(user_id)] = api_data
-    save_config(config)
-
-def remove_user_api(user_id: int) -> None:
-    """Foydalanuvchi API ma'lumotlarini o'chirish"""
-    config = load_config()
-    if "apis" in config and str(user_id) in config["apis"]:
-        del config["apis"][str(user_id)]
-        save_config(config)
-
-def format_balance(balance: str) -> str:
-    """Balansni formatlash"""
-    try:
-        bal = float(balance)
-        return f"{bal:,.2f}"
-    except:
-        return balance
-
-def check_api_balance(api_type: str, api_key: str) -> Optional[float]:
-    """API balansini tekshirish"""
-    import requests
-    
-    try:
-        if api_type == "multibot":
-            url = f"http://api.multibot.in/res.php?action=userinfo&key={api_key}"
-            resp = requests.get(url, timeout=10)
-            data = resp.json()
-            return data.get("balance", 0)
-            
-        elif api_type == "xevil":
-            url = f"https://sctg.xyz/res.php?action=userinfo&key={api_key}"
-            resp = requests.get(url, timeout=10)
-            data = resp.json()
-            return data.get("balance", 0)
-            
-        elif api_type == "2captcha":
-            url = f"https://2captcha.com/res.php?action=getbalance&key={api_key}"
-            resp = requests.get(url, timeout=10)
-            data = resp.json()
-            return data.get("balance", 0)
-            
-        elif api_type == "capsolver":
-            url = f"https://api.capsolver.com/getBalance?apiKey={api_key}"
-            resp = requests.get(url, timeout=10)
-            data = resp.json()
-            return data.get("balance", 0)
-            
-        elif api_type == "anticaptcha":
-            url = "https://api.anti-captcha.com/getBalance"
-            resp = requests.post(url, json={"clientKey": api_key}, timeout=10)
-            data = resp.json()
-            return data.get("balance", 0)
-            
-        elif api_type == "iewil":
-            url = f"https://api-iewil.my.id/getInfo?key={api_key}"
-            resp = requests.get(url, timeout=10)
-            data = resp.json()
-            return data.get("balance", 0) if data.get("status") else 0
-            
-    except Exception as e:
-        logger.error(f"API balans tekshirishda xatolik: {e}")
-        return None
-        
-    return None
-
-# ==========================================================
-#                       TELEGRAM BOT KLASSI
-# ==========================================================
 class TelegramBot:
-    def __init__(self, token: str):
+    def __init__(self, token):
         self.token = token
         self.application = None
         self.bot_instances = {}
         self.running_tasks = {}
-        
+
     def setup(self):
-        """Botni sozlash"""
         self.application = Application.builder().token(self.token).build()
         
-        # Komandalar
-        self.application.add_handler(CommandHandler("start", self.start_command))
-        self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("login", self.login_command))
-        self.application.add_handler(CommandHandler("logout", self.logout_command))
-        self.application.add_handler(CommandHandler("status", self.status_command))
-        self.application.add_handler(CommandHandler("balance", self.balance_command))
-        self.application.add_handler(CommandHandler("claim", self.claim_command))
-        self.application.add_handler(CommandHandler("hourly", self.hourly_command))
-        self.application.add_handler(CommandHandler("stop", self.stop_command))
-        self.application.add_handler(CommandHandler("dashboard", self.dashboard_command))
+        self.application.add_handler(CommandHandler("start", self.start))
+        self.application.add_handler(CommandHandler("help", self.help))
+        self.application.add_handler(CommandHandler("login", self.login))
+        self.application.add_handler(CommandHandler("logout", self.logout))
+        self.application.add_handler(CommandHandler("status", self.status))
+        self.application.add_handler(CommandHandler("balance", self.balance))
+        self.application.add_handler(CommandHandler("claim", self.claim))
+        self.application.add_handler(CommandHandler("hourly", self.hourly))
+        self.application.add_handler(CommandHandler("stop", self.stop))
+        self.application.add_handler(CommandHandler("dashboard", self.dashboard))
+        self.application.add_handler(CommandHandler("setapi", self.setapi))
         
-        # API komandalar
-        self.application.add_handler(CommandHandler("setapi", self.setapi_command))
-        self.application.add_handler(CommandHandler("apistatus", self.apistatus_command))
-        self.application.add_handler(CommandHandler("apibalance", self.apibalance_command))
-        
-        # Callback query handler
-        self.application.add_handler(CallbackQueryHandler(self.callback_handler))
-        
-        # Xatoliklarni ushlash
+        self.application.add_handler(CallbackQueryHandler(self.callback))
+        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.message_handler))
         self.application.add_error_handler(self.error_handler)
-        
+
     def run(self):
-        """Botni ishga tushirish"""
-        logger.info("🤖 Bot ishga tushmoqda...")
+        print("🤖 Bot ishga tushmoqda...")
         self.application.run_polling(allowed_updates=Update.ALL_TYPES)
-        
-    # ==================== KOMANDALAR ====================
-    
-    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/start - Boshlash"""
-        user_id = update.effective_user.id
+
+    async def start(self, update, context):
         username = update.effective_user.username or "NoUsername"
-        
-        welcome_text = f"""
+        text = f"""
 🎰 *TRONPICK BOT v{versi}*
 
-Assalomu alaykum, @{username}! 👋
+Assalomu alaykum @{username}! 👋
 
-Bu bot TRONPICK saytida avtomatik ravishda bonus yig'ish uchun yaratilgan.
-
-📌 *Asosiy komandalar:*
-/start - Botni qayta ishga tushirish
+📌 *Komandalar:*
+/start - Boshlash
 /help - Yordam
-/login - Hisobingizga kirish
-/logout - Hisobingizdan chiqish
-/status - Bot holati
-/balance - Balansni ko'rish
-/dashboard - Dashboard ma'lumotlari
-/claim - Bonusni yig'ish
-/hourly - Hourly bonusni yig'ish (1 soat)
-/stop - Joriy vazifani to'xtatish
+/login - Hisobga kirish
+/logout - Chiqish
+/status - Holat
+/balance - Balans
+/dashboard - Dashboard
+/claim - Bonus yig'ish
+/hourly - Hourly bonus
+/setapi - API sozlash
+/stop - Vazifani to'xtatish
 
-🔑 *API komandalar:*
-/setapi - API sozlash (Multibot, Xevil, Iewil, 2Captcha, CapSolver, AntiCaptcha)
-/apistatus - API holati
-/apibalance - API balansi
+⚙️ *Avval:*
+1. /login -> Cookie va User-Agent kiriting
+2. /setapi -> Captcha API ni sozlang
 
-⚙️ *Sozlash:*
-Avval /login komandasi orqali cookie va user-agent ni sozlang.
-So'ng /setapi orqali captcha API ni sozlang.
-
-📱 *Bot holati:* ✅ Ishlayapti
+🔑 *Bot token:* ✅ Sozlangan
         """
-        
-        keyboard = [
-            [InlineKeyboardButton("📊 Dashboard", callback_data="dashboard")],
-            [InlineKeyboardButton("💰 Balans", callback_data="balance")],
-            [InlineKeyboardButton("🎯 Bonus Yig'ish", callback_data="claim")],
-            [InlineKeyboardButton("⏰ Hourly Bonus", callback_data="hourly")],
-            [InlineKeyboardButton("🔑 API Sozlamalari", callback_data="api_settings")],
-            [InlineKeyboardButton("⚙️ Sozlamalar", callback_data="settings")],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(
-            welcome_text,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
-        
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/help - Yordam"""
-        help_text = """
+        keyboard = [[
+            InlineKeyboardButton("📊 Dashboard", callback_data="dashboard"),
+            InlineKeyboardButton("💰 Balans", callback_data="balance")
+        ],[
+            InlineKeyboardButton("🎯 Bonus", callback_data="claim"),
+            InlineKeyboardButton("⏰ Hourly", callback_data="hourly")
+        ]]
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    async def help(self, update, context):
+        text = """
 📖 *Yordam*
 
-🔑 *Kirish:*
-/login - Hisobingizga kirish uchun cookie va user-agent so'raydi
+🔑 /login - Hisobga kirish
+  Format: cookie|user_agent
 
-🔧 *API Sozlash:*
-/setapi - Captcha API ni sozlash
-  • Multibot - http://api.multibot.in/
-  • Xevil - https://sctg.xyz/
-  • Iewil - https://iewilbot.my.id/
-  • 2Captcha - https://2captcha.com/
-  • CapSolver - https://capsolver.com/
-  • AntiCaptcha - https://anti-captcha.com/
+🔧 /setapi - API sozlash
+  Format: provider|api_key
+  Provider: multibot, xevil
 
-/apistatus - API holatini ko'rish
-/apibalance - API balansini ko'rish
+💰 /balance - Balans
+📊 /dashboard - Dashboard
+🎯 /claim - Kunlik bonus
+⏰ /hourly - Hourly bonus (1 soat)
+🛑 /stop - Vazifani to'xtatish
+🚪 /logout - Chiqish
+📊 /status - Holat
 
-💳 *Ma'lumotlar:*
-/balance - Joriy balansni ko'rish
-/dashboard - To'liq dashboard ma'lumotlari
-
-🎯 *Bonuslar:*
-/claim - Kunlik bonusni yig'ish
-/hourly - Hourly bonusni yig'ish (1 soat interval)
-
-🔧 *Boshqaruv:*
-/status - Bot holatini tekshirish
-/logout - Hisobingizdan chiqish
-/stop - Joriy vazifani to'xtatish
-
-⚠️ *Muhim:*
-1. Cookie va user-agent ni /login orqali kiriting
-2. Captcha uchun API ni /setapi orqali sozlang
-3. Hourly bonus har 1 soatda bir marta yig'iladi
-4. Xato xabarlar kelganda /status ni tekshiring
+📌 *Bot:* @{context.bot.username}
         """
-        await update.message.reply_text(help_text, parse_mode="Markdown")
-        
-    async def login_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/login - Hisobga kirish"""
-        user_id = update.effective_user.id
-        
-        # Foydalanuvchini ro'yxatga olish
-        config = load_config()
-        if "users" not in config:
-            config["users"] = {}
-        config["users"][str(user_id)] = {
-            "username": update.effective_user.username or "Unknown",
-            "first_name": update.effective_user.first_name or "",
-            "last_login": datetime.now().isoformat()
-        }
-        save_config(config)
-        
+        await update.message.reply_text(text, parse_mode="Markdown")
+
+    async def login(self, update, context):
         await update.message.reply_text(
             "🔑 *Hisobga kirish*\n\n"
-            "Iltimos, quyidagi ma'lumotlarni kiriting:\n\n"
-            "1️⃣ *Cookie* (to'liq qator)\n"
-            "2️⃣ *User-Agent*\n\n"
-            "Format: `cookie|user_agent`\n\n"
+            "Cookie va User-Agent ni quyidagi formatda yuboring:\n"
+            "`cookie|user_agent`\n\n"
             "Misol:\n"
-            "`cf_clearance=...; PHPSESSID=...|Mozilla/5.0...`\n\n"
-            "Yoki alohida:\n"
-            "Avval cookieni, keyin user-agent ni yuboring.",
+            "`cf_clearance=...; PHPSESSID=...|Mozilla/5.0...`",
             parse_mode="Markdown"
         )
-        
-        context.user_data['login_state'] = 'waiting_cookie'
-        
-    async def logout_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/logout - Hisobdan chiqish"""
+        context.user_data['state'] = 'login'
+
+    async def logout(self, update, context):
         user_id = update.effective_user.id
-        
-        remove_user_session(user_id)
-        
+        remove_session(user_id)
         if user_id in self.bot_instances:
             del self.bot_instances[user_id]
-            
-        if user_id in self.running_tasks:
-            self.running_tasks[user_id] = None
-            
-        await update.message.reply_text(
-            "✅ *Hisobdan chiqildi*\n\n"
-            "Cookie va user-agent ma'lumotlari o'chirildi.\n"
-            "Qayta kirish uchun /login komandasidan foydalaning.",
-            parse_mode="Markdown"
-        )
-        
-    async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/status - Bot holati"""
+        await update.message.reply_text("✅ *Hisobdan chiqildi!*", parse_mode="Markdown")
+
+    async def status(self, update, context):
         user_id = update.effective_user.id
-        
-        session = get_user_session(user_id)
-        api = get_user_api(user_id)
-        is_logged_in = session is not None
-        
-        status_text = f"""
-📊 *Bot Holati*
+        session = get_session(user_id)
+        text = f"""
+📊 *Holat*
 
-👤 *Foydalanuvchi:* @{update.effective_user.username or 'Unknown'}
-🔑 *Kirish holati:* {'✅ Kirilgan' if is_logged_in else '❌ Kirilmagan'}
-📱 *Sessiya:* {'Mavjud' if is_logged_in else 'Yo\'q'}
-🔄 *Vazifa:* {'Ishlayapti' if user_id in self.running_tasks and self.running_tasks.get(user_id) else 'To\'xtatilgan'}
+👤 @{update.effective_user.username}
+🔑 Kirish: {'✅' if session else '❌'}
+🔄 Vazifa: {'Ishlayapti' if user_id in self.running_tasks and self.running_tasks.get(user_id) else 'To\'xtatilgan'}
 
-🔧 *API Holati:*
-• Provider: {api.get('provider', 'Sozlanmagan') if api else 'Sozlanmagan'}
-• API Key: {'✅ Sozlangan' if api and api.get('api_key') else '❌ Sozlanmagan'}
-• Balans: {'🔄 Tekshirilmoqda...' if api else 'N/A'}
-
-📅 *So'nggi faollik:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-📌 *Bot versiyasi:* v{versi}
+📌 *Bot token:* ✅ Sozlangan
         """
-        
-        keyboard = []
-        if is_logged_in:
-            keyboard.append([InlineKeyboardButton("📊 Dashboard", callback_data="dashboard")])
-            keyboard.append([InlineKeyboardButton("💰 Balans", callback_data="balance")])
-            keyboard.append([InlineKeyboardButton("🎯 Claim Bonus", callback_data="claim")])
-            keyboard.append([InlineKeyboardButton("⏰ Hourly Bonus", callback_data="hourly")])
-        keyboard.append([InlineKeyboardButton("🔑 API Sozlamalari", callback_data="api_settings")])
-        keyboard.append([InlineKeyboardButton("🚪 Chiqish", callback_data="logout")])
-            
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(
-            status_text,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
-        
-    async def balance_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/balance - Balansni ko'rish"""
+        await update.message.reply_text(text, parse_mode="Markdown")
+
+    async def balance(self, update, context):
         user_id = update.effective_user.id
-        
-        session = get_user_session(user_id)
+        session = get_session(user_id)
         if not session:
-            await update.message.reply_text(
-                "❌ *Xatolik:* Avval /login komandasi orqali hisobingizga kiring!",
-                parse_mode="Markdown"
-            )
+            await update.message.reply_text("❌ Avval /login qiling!", parse_mode="Markdown")
             return
-            
         try:
-            bot = self._get_bot_instance(user_id, session)
+            bot = self._get_bot(user_id, session)
             r = bot.Dashboard()
-            
             if not r.get("Login"):
-                await update.message.reply_text(
-                    "❌ *Cookie muddati tugagan!*\n"
-                    "Iltimos, qayta /login qiling.",
-                    parse_mode="Markdown"
-                )
-                remove_user_session(user_id)
+                await update.message.reply_text("❌ Cookie eskirgan! /login qiling.", parse_mode="Markdown")
+                remove_session(user_id)
                 return
-                
-            # API balansini tekshirish
-            api = get_user_api(user_id)
-            api_balance = "Sozlanmagan"
-            if api and api.get('api_key'):
-                api_balance = check_api_balance(api.get('provider', '').lower(), api.get('api_key'))
-                api_balance = f"{api_balance:.2f}" if api_balance else "Xatolik"
-                
-            balance_text = f"""
-💰 *Balans Ma'lumotlari*
+            text = f"""
+💰 *Balans*
 
-👤 *Foydalanuvchi:* {r.get('Username', 'Noma\'lum')}
-💵 *TRON Balans:* {r.get('Balance', '0')} TRX
-📊 *Level:* {r.get('Level', 'Noma\'lum')}
-
-📈 *Statistika:*
-• Total Wagered: {r.get('Total Wagered', '0')}
-• Wagering Target: {r.get('Wagering Target', '0')}
-            
-🔑 *API Balans:*
-• Provider: {api.get('provider', 'Sozlanmagan') if api else 'Sozlanmagan'}
-• Balans: {api_balance}
-            
-📅 *So'nggi yangilanish:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+👤 {r.get('Username', 'Noma\'lum')}
+💵 {r.get('Balance', '0')} TRX
+📊 {r.get('Level', 'N/A')}
             """
-            
-            keyboard = [
-                [InlineKeyboardButton("🔄 Yangilash", callback_data="balance")],
-                [InlineKeyboardButton("📊 Dashboard", callback_data="dashboard")],
-                [InlineKeyboardButton("🎯 Bonus Yig'ish", callback_data="claim")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                balance_text,
-                parse_mode="Markdown",
-                reply_markup=reply_markup
-            )
-            
+            await update.message.reply_text(text, parse_mode="Markdown")
         except Exception as e:
-            await update.message.reply_text(
-                f"❌ *Xatolik:* {str(e)}\n\n"
-                "Iltimos, qayta urinib ko'ring.",
-                parse_mode="Markdown"
-            )
-            
-    async def dashboard_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/dashboard - Dashboard ma'lumotlari"""
+            await update.message.reply_text(f"❌ Xatolik: {str(e)}", parse_mode="Markdown")
+
+    async def dashboard(self, update, context):
         user_id = update.effective_user.id
-        
-        session = get_user_session(user_id)
+        session = get_session(user_id)
         if not session:
-            await update.message.reply_text(
-                "❌ *Xatolik:* Avval /login komandasi orqali hisobingizga kiring!",
-                parse_mode="Markdown"
-            )
+            await update.message.reply_text("❌ Avval /login qiling!", parse_mode="Markdown")
             return
-            
         try:
-            bot = self._get_bot_instance(user_id, session)
+            bot = self._get_bot(user_id, session)
             r = bot.Dashboard()
-            
             if not r.get("Login"):
-                await update.message.reply_text(
-                    "❌ *Cookie muddati tugagan!* Qayta /login qiling.",
-                    parse_mode="Markdown"
-                )
-                remove_user_session(user_id)
+                await update.message.reply_text("❌ Cookie eskirgan! /login qiling.", parse_mode="Markdown")
+                remove_session(user_id)
                 return
-                
-            dashboard_text = f"""
-📊 *Dashboard Ma'lumotlari*
+            text = f"""
+📊 *Dashboard*
 
-👤 *Foydalanuvchi:* {r.get('Username', 'Noma\'lum')}
-💵 *Balans:* {r.get('Balance', '0')} TRX
-📊 *Level:* {r.get('Level', 'Noma\'lum')}
-
-📈 *Statistika:*
-• Total Wagered: {r.get('Total Wagered', '0')}
-• Wagering Target: {r.get('Wagering Target', '0')}
-
-📅 *Sana:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+👤 {r.get('Username', 'N/A')}
+💵 {r.get('Balance', '0')} TRX
+📊 {r.get('Level', 'N/A')}
             """
-            
-            keyboard = [
-                [InlineKeyboardButton("🔄 Yangilash", callback_data="dashboard")],
-                [InlineKeyboardButton("💰 Balans", callback_data="balance")],
-                [InlineKeyboardButton("🎯 Bonus Yig'ish", callback_data="claim")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                dashboard_text,
-                parse_mode="Markdown",
-                reply_markup=reply_markup
-            )
-            
+            await update.message.reply_text(text, parse_mode="Markdown")
         except Exception as e:
-            await update.message.reply_text(
-                f"❌ *Xatolik:* {str(e)}",
-                parse_mode="Markdown"
-            )
-            
-    async def claim_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/claim - Bonusni yig'ish"""
+            await update.message.reply_text(f"❌ Xatolik: {str(e)}", parse_mode="Markdown")
+
+    async def claim(self, update, context):
         user_id = update.effective_user.id
-        
-        session = get_user_session(user_id)
+        session = get_session(user_id)
         if not session:
-            await update.message.reply_text(
-                "❌ *Xatolik:* Avval /login komandasi orqali hisobingizga kiring!",
-                parse_mode="Markdown"
-            )
+            await update.message.reply_text("❌ Avval /login qiling!", parse_mode="Markdown")
             return
-            
-        api = get_user_api(user_id)
-        if not api or not api.get('api_key'):
-            await update.message.reply_text(
-                "❌ *Xatolik:* Avval /setapi komandasi orqali API ni sozlang!\n\n"
-                "Qo'llab-quvvatlanadigan API'lar:\n"
-                "• Multibot\n"
-                "• Xevil\n"
-                "• Iewil\n"
-                "• 2Captcha\n"
-                "• CapSolver\n"
-                "• AntiCaptcha",
-                parse_mode="Markdown"
-            )
-            return
-            
-        await update.message.reply_text(
-            "🎯 *Bonus yig'ish boshlandi...*\n\n"
-            f"🔑 API: {api.get('provider')}\n"
-            "Iltimos, kuting...",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("🎯 *Bonus yig'ish boshlandi...*", parse_mode="Markdown")
         
-        def claim_task():
+        def task():
             try:
-                bot = self._get_bot_instance(user_id, session)
-                bot.ClaimBonus()
-                
-                self._send_message(user_id, "✅ *Bonus muvaffaqiyatli yig'ildi!*", parse_mode="Markdown")
-                
+                bot = self._get_bot(user_id, session)
+                success, msg = bot.ClaimBonus()
+                self._send(user_id, f"{'✅' if success else '❌'} {msg}")
             except Exception as e:
-                self._send_message(user_id, f"❌ *Xatolik:* {str(e)}", parse_mode="Markdown")
-                
-        thread = threading.Thread(target=claim_task)
+                self._send(user_id, f"❌ Xatolik: {str(e)}")
+        
+        thread = threading.Thread(target=task)
         thread.daemon = True
         thread.start()
         self.running_tasks[user_id] = thread
-        
-    async def hourly_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/hourly - Hourly bonusni yig'ish"""
+
+    async def hourly(self, update, context):
         user_id = update.effective_user.id
-        
-        session = get_user_session(user_id)
+        session = get_session(user_id)
         if not session:
-            await update.message.reply_text(
-                "❌ *Xatolik:* Avval /login komandasi orqali hisobingizga kiring!",
-                parse_mode="Markdown"
-            )
+            await update.message.reply_text("❌ Avval /login qiling!", parse_mode="Markdown")
             return
-            
-        await update.message.reply_text(
-            "⏰ *Hourly bonus yig'ish boshlandi...*\n\n"
-            "Bu jarayon 1 soat davom etadi.\n"
-            "To'xtatish uchun /stop komandasini bosing.",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("⏰ *Hourly bonus boshlandi...*", parse_mode="Markdown")
         
-        def hourly_task():
+        def task():
             try:
-                bot = self._get_bot_instance(user_id, session)
-                result = bot.HourlyFaucet()
-                
-                if result:
-                    self._send_message(
-                        user_id, 
-                        "✅ *Hourly bonus muvaffaqiyatli yig'ildi!*\n\n"
-                        "Keyingi bonus 1 soatdan keyin...",
-                        parse_mode="Markdown"
-                    )
-                else:
-                    self._send_message(
-                        user_id,
-                        "❌ *Hourly bonus yig'ishda xatolik yuz berdi!*",
-                        parse_mode="Markdown"
-                    )
-                    
+                bot = self._get_bot(user_id, session)
+                success, msg = bot.HourlyFaucet()
+                self._send(user_id, f"{'✅' if success else '❌'} {msg}")
             except Exception as e:
-                self._send_message(
-                    user_id,
-                    f"❌ *Xatolik:* {str(e)}",
-                    parse_mode="Markdown"
-                )
-                
-        thread = threading.Thread(target=hourly_task)
+                self._send(user_id, f"❌ Xatolik: {str(e)}")
+        
+        thread = threading.Thread(target=task)
         thread.daemon = True
         thread.start()
         self.running_tasks[user_id] = thread
-        
-    async def stop_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/stop - Joriy vazifani to'xtatish"""
+
+    async def stop(self, update, context):
         user_id = update.effective_user.id
-        
         if user_id in self.running_tasks and self.running_tasks.get(user_id):
             self.running_tasks[user_id] = None
-            await update.message.reply_text(
-                "🛑 *Vazifa to'xtatildi!*",
-                parse_mode="Markdown"
-            )
+            await update.message.reply_text("🛑 *Vazifa to'xtatildi!*", parse_mode="Markdown")
         else:
-            await update.message.reply_text(
-                "ℹ️ *Hozirgi vaqtda hech qanday vazifa ishlamayapti.*",
-                parse_mode="Markdown"
-            )
-            
-    # ==================== API KOMANDALAR ====================
-    
-    async def setapi_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/setapi - API sozlash"""
-        user_id = update.effective_user.id
-        
-        api_list = "\n".join([
-            f"• {name.upper()} - {info['url']}"
-            for name, info in API_TYPES.items()
-        ])
-        
+            await update.message.reply_text("ℹ️ Hech qanday vazifa ishlamayapti.", parse_mode="Markdown")
+
+    async def setapi(self, update, context):
         await update.message.reply_text(
-            f"🔑 *API Sozlash*\n\n"
-            "Qo'llab-quvvatlanadigan API'lar:\n"
-            f"{api_list}\n\n"
-            "Format: `provider|api_key`\n\n"
-            "Misol:\n"
-            "`multibot|YOUR_API_KEY`\n"
-            "`xevil|YOUR_API_KEY`\n"
-            "`iewil|YOUR_API_KEY`\n"
-            "`2captcha|YOUR_API_KEY`\n"
-            "`capsolver|YOUR_API_KEY`\n"
-            "`anticaptcha|YOUR_API_KEY`",
+            "🔑 *API sozlash*\n\n"
+            "Format: `provider|api_key`\n"
+            "Provider: `multibot`, `xevil`\n\n"
+            "Misol: `multibot|YOUR_API_KEY`",
             parse_mode="Markdown"
         )
-        
-        context.user_data['api_state'] = 'waiting_api'
-        
-    async def apistatus_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/apistatus - API holati"""
-        user_id = update.effective_user.id
-        
-        api = get_user_api(user_id)
-        if not api:
-            await update.message.reply_text(
-                "❌ *API sozlanmagan!*\n\n"
-                "Iltimos, /setapi komandasi orqali API ni sozlang.",
-                parse_mode="Markdown"
-            )
-            return
-            
-        # API balansini tekshirish
-        balance = check_api_balance(api.get('provider', '').lower(), api.get('api_key'))
-        
-        status_text = f"""
-🔑 *API Holati*
+        context.user_data['state'] = 'api'
 
-📌 *Provider:* {api.get('provider', 'Noma\'lum')}
-🔑 *API Key:* {api.get('api_key', 'N/A')[:10]}...
-💰 *Balans:* {balance if balance is not None else 'Tekshirib bo\'lmadi'}
-📅 *Sozlangan sana:* {api.get('created_at', 'Noma\'lum')}
-
-📊 *API imkoniyatlari:*
-• RecaptchaV2: {'✅' if api.get('provider') in ['Multibot', 'Xevil', '2Captcha', 'CapSolver', 'AntiCaptcha'] else '❌'}
-• Hcaptcha: {'✅' if api.get('provider') in ['Multibot', 'Xevil', '2Captcha', 'CapSolver'] else '❌'}
-• Turnstile: {'✅' if api.get('provider') in ['Multibot', 'Xevil', 'Iewil', 'CapSolver'] else '❌'}
-• OCR: {'✅' if api.get('provider') in ['Multibot', 'Xevil'] else '❌'}
-• AntiBot: {'✅' if api.get('provider') in ['Multibot', 'Xevil', 'Iewil'] else '❌'}
-        """
-        
-        keyboard = [
-            [InlineKeyboardButton("🔄 Yangilash", callback_data="apistatus")],
-            [InlineKeyboardButton("💰 API Balans", callback_data="apibalance")],
-            [InlineKeyboardButton("🔑 API O'zgartirish", callback_data="api_settings")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(
-            status_text,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
-        
-    async def apibalance_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/apibalance - API balansi"""
-        user_id = update.effective_user.id
-        
-        api = get_user_api(user_id)
-        if not api:
-            await update.message.reply_text(
-                "❌ *API sozlanmagan!*\n\n"
-                "Iltimos, /setapi komandasi orqali API ni sozlang.",
-                parse_mode="Markdown"
-            )
-            return
-            
-        await update.message.reply_text(
-            "🔄 *API balansi tekshirilmoqda...*\n"
-            "Iltimos, kuting.",
-            parse_mode="Markdown"
-        )
-        
-        balance = check_api_balance(api.get('provider', '').lower(), api.get('api_key'))
-        
-        if balance is not None:
-            await update.message.reply_text(
-                f"💰 *API Balans*\n\n"
-                f"📌 *Provider:* {api.get('provider')}\n"
-                f"💵 *Balans:* {balance:.2f} $\n"
-                f"📅 *Sana:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}",
-                parse_mode="Markdown"
-            )
-        else:
-            await update.message.reply_text(
-                "❌ *API balansini tekshirib bo'lmadi!*\n\n"
-                "Iltimos, API kalitini tekshiring va /setapi orqali qayta sozlang.",
-                parse_mode="Markdown"
-            )
-            
-    # ==================== CALLBACK HANDLER ====================
-    
-    async def callback_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Callback query handler"""
+    async def callback(self, update, context):
         query = update.callback_query
         await query.answer()
-        
-        user_id = update.effective_user.id
         data = query.data
-        
         if data == "dashboard":
-            await self.dashboard_command(update, context)
+            await self.dashboard(update, context)
         elif data == "balance":
-            await self.balance_command(update, context)
+            await self.balance(update, context)
         elif data == "claim":
-            await self.claim_command(update, context)
+            await self.claim(update, context)
         elif data == "hourly":
-            await self.hourly_command(update, context)
-        elif data == "login":
-            await self.login_command(update, context)
-        elif data == "logout":
-            await self.logout_command(update, context)
-        elif data == "settings":
-            await self._settings_menu(update, context)
-        elif data == "api_settings":
-            await self._api_settings_menu(update, context)
-        elif data == "apistatus":
-            await self.apistatus_command(update, context)
-        elif data == "apibalance":
-            await self.apibalance_command(update, context)
-        elif data.startswith("api_select_"):
-            provider = data.replace("api_select_", "")
-            context.user_data['selected_api'] = provider
-            await query.edit_message_text(
-                f"🔑 *{provider.upper()} API sozlash*\n\n"
-                f"API kalitingizni yuboring:\n\n"
-                f"Format: `api_key`\n\n"
-                f"Misol: `YOUR_API_KEY_HERE`",
-                parse_mode="Markdown"
-            )
-            context.user_data['api_state'] = 'waiting_api_key'
-            
-    # ==================== XABAR HANDLER ====================
-    
-    async def message_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Oddiy xabarlarni qayta ishlash"""
+            await self.hourly(update, context)
+
+    async def message_handler(self, update, context):
         user_id = update.effective_user.id
         text = update.message.text
         
-        # Login jarayoni
-        if context.user_data.get('login_state') == 'waiting_cookie':
-            context.user_data['cookie'] = text
-            context.user_data['login_state'] = 'waiting_user_agent'
-            await update.message.reply_text(
-                "✅ *Cookie qabul qilindi!*\n\n"
-                "Endi User-Agent ni yuboring:\n"
-                "Masalan: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...`",
-                parse_mode="Markdown"
-            )
-            return
-            
-        elif context.user_data.get('login_state') == 'waiting_user_agent':
-            cookie = context.user_data.get('cookie')
-            user_agent = text
-            
-            session_data = {
-                "cookie": cookie,
-                "user_agent": user_agent
-            }
-            set_user_session(user_id, session_data)
-            
-            context.user_data['login_state'] = None
-            context.user_data.pop('cookie', None)
-            
-            await update.message.reply_text(
-                "✅ *Hisobingizga muvaffaqiyatli kirdingiz!*\n\n"
-                f"📌 *Cookie:* {cookie[:50]}...\n"
-                f"📌 *User-Agent:* {user_agent[:50]}...\n\n"
-                "Keyingi qadam: /setapi orqali captcha API ni sozlang\n\n"
-                "Endi quyidagi komandalardan foydalanishingiz mumkin:\n"
-                "/balance - Balansni ko'rish\n"
-                "/claim - Bonus yig'ish\n"
-                "/hourly - Hourly bonus yig'ish\n"
-                "/dashboard - Dashboard ma'lumotlari",
-                parse_mode="Markdown"
-            )
-            return
-            
-        # API sozlash jarayoni
-        if context.user_data.get('api_state') == 'waiting_api':
-            # Foydalanuvchi provider|api_key formatida yuborgan
+        # Login
+        if context.user_data.get('state') == 'login':
             if '|' in text:
-                provider, api_key = text.split('|', 1)
-                provider = provider.strip().lower()
-                api_key = api_key.strip()
-                
-                if provider not in API_TYPES:
-                    await update.message.reply_text(
-                        f"❌ *Xatolik:* '{provider}' qo'llab-quvvatlanmaydi!\n\n"
-                        "Qo'llab-quvvatlanadigan API'lar:\n"
-                        f"{', '.join(API_TYPES.keys())}",
-                        parse_mode="Markdown"
-                    )
-                    return
-                    
-                # API balansini tekshirish
-                balance = check_api_balance(provider, api_key)
-                if balance is None:
-                    await update.message.reply_text(
-                        f"❌ *Xatolik:* API kaliti noto'g'ri yoki balansni tekshirib bo'lmadi!\n\n"
-                        "Iltimos, API kalitini tekshirib qayta yuboring.",
-                        parse_mode="Markdown"
-                    )
-                    return
-                    
-                # API ma'lumotlarini saqlash
-                api_data = {
-                    "provider": API_TYPES[provider]['name'],
-                    "api_key": api_key,
-                    "created_at": datetime.now().isoformat()
-                }
-                set_user_api(user_id, api_data)
-                
-                context.user_data['api_state'] = None
-                
-                await update.message.reply_text(
-                    f"✅ *API muvaffaqiyatli sozlandi!*\n\n"
-                    f"📌 *Provider:* {API_TYPES[provider]['name']}\n"
-                    f"💰 *Balans:* {balance:.2f} $\n"
-                    f"📅 *Sana:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n\n"
-                    "Endi bonus yig'ishni boshlashingiz mumkin:\n"
-                    "/claim - Kunlik bonus\n"
-                    "/hourly - Hourly bonus",
-                    parse_mode="Markdown"
-                )
-                return
+                cookie, ua = text.split('|', 1)
+                set_session(user_id, {"cookie": cookie.strip(), "user_agent": ua.strip()})
+                context.user_data['state'] = None
+                await update.message.reply_text("✅ *Hisobga kirdingiz!*", parse_mode="Markdown")
             else:
-                await update.message.reply_text(
-                    "❌ *Xatolik:* Noto'g'ri format!\n\n"
-                    "Format: `provider|api_key`\n\n"
-                    "Misol: `multibot|YOUR_API_KEY`\n"
-                    "Qo'llab-quvvatlanadigan provider'lar:\n"
-                    f"{', '.join(API_TYPES.keys())}",
-                    parse_mode="Markdown"
-                )
-                return
-                
-        elif context.user_data.get('api_state') == 'waiting_api_key':
-            provider = context.user_data.get('selected_api')
-            api_key = text.strip()
-            
-            if not provider:
-                await update.message.reply_text(
-                    "❌ *Xatolik:* Provider tanlanmagan!\n"
-                    "Iltimos, /setapi komandasini qayta bosing.",
-                    parse_mode="Markdown"
-                )
-                context.user_data['api_state'] = None
-                return
-                
-            # API balansini tekshirish
-            balance = check_api_balance(provider, api_key)
-            if balance is None:
-                await update.message.reply_text(
-                    f"❌ *Xatolik:* API kaliti noto'g'ri yoki balansni tekshirib bo'lmadi!\n\n"
-                    "Iltimos, API kalitini tekshirib qayta yuboring.",
-                    parse_mode="Markdown"
-                )
-                return
-                
-            # API ma'lumotlarini saqlash
-            api_data = {
-                "provider": API_TYPES[provider]['name'],
-                "api_key": api_key,
-                "created_at": datetime.now().isoformat()
-            }
-            set_user_api(user_id, api_data)
-            
-            context.user_data['api_state'] = None
-            context.user_data.pop('selected_api', None)
-            
-            await update.message.reply_text(
-                f"✅ *API muvaffaqiyatli sozlandi!*\n\n"
-                f"📌 *Provider:* {API_TYPES[provider]['name']}\n"
-                f"💰 *Balans:* {balance:.2f} $\n"
-                f"📅 *Sana:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n\n"
-                "Endi bonus yig'ishni boshlashingiz mumkin:\n"
-                "/claim - Kunlik bonus\n"
-                "/hourly - Hourly bonus",
-                parse_mode="Markdown"
-            )
+                await update.message.reply_text("❌ Format: `cookie|user_agent`", parse_mode="Markdown")
             return
             
-        # Agar boshqa xabar bo'lsa
-        await update.message.reply_text(
-            "❓ *Noma'lum buyruq.*\n"
-            "Yordam uchun /help bosing.",
-            parse_mode="Markdown"
-        )
-        
-    # ==================== YORDAMCHI FUNKSIYALAR ====================
-    
-    def _get_bot_instance(self, user_id: int, session: Dict[str, Any]):
-        """Foydalanuvchi uchun TronBot instansiyasini olish"""
+        # API
+        if context.user_data.get('state') == 'api':
+            if '|' in text:
+                provider, key = text.split('|', 1)
+                config = load_tg_config()
+                if "apis" not in config:
+                    config["apis"] = {}
+                config["apis"][str(user_id)] = {"provider": provider.strip(), "api_key": key.strip()}
+                save_tg_config(config)
+                context.user_data['state'] = None
+                await update.message.reply_text(f"✅ *API sozlandi!* Provider: {provider}", parse_mode="Markdown")
+            else:
+                await update.message.reply_text("❌ Format: `provider|api_key`", parse_mode="Markdown")
+            return
+
+    def _get_bot(self, user_id, session):
         if user_id not in self.bot_instances:
             bot = TronBot()
             bot.cookie = session.get("cookie")
             bot.uagent = session.get("user_agent")
-            
-            # API ma'lumotlarini o'rnatish
-            api = get_user_api(user_id)
-            if api:
-                provider = api.get('provider', '').lower()
-                api_key = api.get('api_key')
-                
-                if provider == 'multibot':
-                    bot.captcha = Captcha()
-                    bot.captcha.provider = 'Multibot'
-                    bot.captcha.key = api_key
-                elif provider == 'xevil':
-                    bot.captcha = Captcha()
-                    bot.captcha.provider = 'Xevil'
-                    bot.captcha.key = api_key + "|SOFTID1204538927"
-                elif provider == 'iewil':
-                    bot.iewil = Iewil(api_key)
-                elif provider in ['2captcha', 'capsolver', 'anticaptcha']:
-                    # Boshqa API'lar uchun Captcha klassini sozlash
-                    bot.captcha = Captcha()
-                    bot.captcha.provider = provider
-                    bot.captcha.key = api_key
-                    
             self.bot_instances[user_id] = bot
         return self.bot_instances[user_id]
-        
-    def _send_message(self, user_id: int, text: str, **kwargs):
-        """Foydalanuvchiga xabar yuborish"""
+
+    def _send(self, user_id, text):
         try:
-            self.application.bot.send_message(
-                chat_id=user_id,
-                text=text,
-                **kwargs
-            )
-        except Exception as e:
-            logger.error(f"Xabar yuborishda xatolik: {e}")
-            
-    async def _settings_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Sozlamalar menyusi"""
-        user_id = update.effective_user.id
-        session = get_user_session(user_id)
-        api = get_user_api(user_id)
-        
-        settings_text = f"""
-⚙️ *Sozlamalar*
+            self.application.bot.send_message(chat_id=user_id, text=text, parse_mode="Markdown")
+        except Exception:
+            pass
 
-📌 *Cookie:* {'✅ Mavjud' if session else '❌ Yo\'q'}
-🔑 *API:* {'✅ Sozlangan' if api else '❌ Sozlanmagan'}
-📌 *Provider:* {api.get('provider', 'N/A') if api else 'N/A'}
-
-🔧 *Mavjud sozlamalar:*
-• /login - Hisobga kirish
-• /logout - Hisobdan chiqish
-• /setapi - API sozlash
-• /status - Bot holati
-
-💡 *Maslahat:*
-1. Avval /login orqali hisobga kiring
-2. Keyin /setapi orqali API ni sozlang
-        """
-        
-        keyboard = [
-            [InlineKeyboardButton("🔑 Kirish", callback_data="login")],
-            [InlineKeyboardButton("🚪 Chiqish", callback_data="logout")],
-            [InlineKeyboardButton("🔑 API Sozlamalari", callback_data="api_settings")],
-            [InlineKeyboardButton("📊 Dashboard", callback_data="dashboard")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(
-            settings_text,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
-        
-    async def _api_settings_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """API sozlamalari menyusi"""
-        user_id = update.effective_user.id
-        api = get_user_api(user_id)
-        
-        keyboard = []
-        for provider, info in API_TYPES.items():
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{'✅ ' if api and api.get('provider', '').lower() == provider else ''}{info['name']}",
-                    callback_data=f"api_select_{provider}"
-                )
-            ])
-        
-        keyboard.append([InlineKeyboardButton("📊 API Holati", callback_data="apistatus")])
-        keyboard.append([InlineKeyboardButton("💰 API Balans", callback_data="apibalance")])
-        keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="settings")])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(
-            f"🔑 *API Sozlamalari*\n\n"
-            f"Joriy API: {api.get('provider', 'Sozlanmagan') if api else 'Sozlanmagan'}\n\n"
-            "Quyidagi API'lardan birini tanlang:",
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
-        
-    # ==================== ERROR HANDLER ====================
-    
-    async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Xatoliklarni boshqarish"""
-        logger.error(f"Xatolik: {context.error}")
-        
+    async def error_handler(self, update, context):
+        print(f"Xatolik: {context.error}")
         if update and update.effective_message:
-            await update.effective_message.reply_text(
-                "❌ *Xatolik yuz berdi!*\n"
-                "Iltimos, qayta urinib ko'ring yoki /start bosing.\n\n"
-                f"Xatolik: {str(context.error)[:100]}",
-                parse_mode="Markdown"
-            )
+            await update.effective_message.reply_text(f"❌ Xatolik: {str(context.error)[:100]}", parse_mode="Markdown")
 
 # ==========================================================
-#                       ASOSIY QISM
+#                       MAIN
 # ==========================================================
 def main():
-    """Asosiy funksiya"""
-    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
-        print("⚠️ Iltimos, BOT_TOKEN ni o'zgartiring!")
-        print("📝 bot.py faylida BOT_TOKEN = 'YOUR_TOKEN' qatorini o'zgartiring.")
+    # curl tekshirish
+    try:
+        subprocess.run(["curl", "--version"], capture_output=True, check=True)
+    except:
+        print("❌ curl o'rnatilmagan!")
+        print("📌 apt install curl (Linux) yoki pkg install curl (Termux)")
         sys.exit(1)
-        
+    
     bot = TelegramBot(BOT_TOKEN)
     bot.setup()
     
-    bot.application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, bot.message_handler)
-    )
-    
     print(f"""
 ╔════════════════════════════════════════╗
-║                                        ║
 ║     🤖 TRONPICK TELEGRAM BOT v{versi}     ║
-║                                        ║
 ║     Bot ishga tushdi!                  ║
-║     @{bot.application.bot.username}          ║
-║                                        ║
-║     📅 {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}        ║
-║                                        ║
+║     Token: {BOT_TOKEN[:15]}...        ║
 ╚════════════════════════════════════════╝
     """)
     
