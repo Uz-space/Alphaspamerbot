@@ -257,7 +257,6 @@ async def get_panel_menu():
         [KeyboardButton("⚙ Asosiy sozlamalar")],
         [KeyboardButton("📢 Kanallar"), KeyboardButton("📊 Statistika")],
         [KeyboardButton("🔎 Foydalanuvchini boshqarish")],
-        [KeyboardButton("🎛 Tugmalar"), KeyboardButton("📃 Matnlar")],
         [KeyboardButton("💳 To'lov tizimi")],
         [KeyboardButton("📨 Xabarnoma"), KeyboardButton("◀️ Orqaga")]
     ]
@@ -884,14 +883,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=await get_boshqarish()
             )
             set_user_step(user_id, 'iD')
-            return
-        
-        if text == "🎛 Tugmalar":
-            await update.message.reply_text("<b>Tugmalar sozlamasi mavjud emas!</b>", parse_mode='HTML')
-            return
-        
-        if text == "📃 Matnlar":
-            await update.message.reply_text("<b>Matnlar sozlamasi mavjud emas!</b>", parse_mode='HTML')
             return
         
         if text == "💳 To'lov tizimi":
