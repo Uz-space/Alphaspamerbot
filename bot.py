@@ -106,15 +106,8 @@ async def send_preview(target, ctx, uid: int, edit_msg=None):
         except Exception:
             pass
 
-    kwargs = dict(caption=make_caption(uid), parse_mode="HTML", reply_markup=make_keyboard(uid))
-
-    # file_id ni to'g'ridan yuborish — yuklab olish kerak emas, darhol ishlaydi
-    if ext == ".webm":
-        await target.reply_video(video=sticker.file_id, **kwargs)
-    elif ext == ".tgs":
-        await target.reply_animation(animation=sticker.file_id, **kwargs)
-    else:
-        await target.reply_document(document=sticker.file_id, **kwargs)
+    # reply_sticker — hech narsa yuklanmaydi, file_id orqali darhol ishlaydi
+    await target.reply_sticker(sticker=sticker.file_id, reply_markup=make_keyboard(uid))
 
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
