@@ -6,7 +6,7 @@ import subprocess
 import threading
 import time
 import queue
-import shlex
+import shutil
 from datetime import datetime
 from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -15,13 +15,14 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 # Bot tokeni
 BOT_TOKEN = "8245157509:AAGeQpYiyS-VWLRnJmI655TR6IDhkyFJpv8"
 
-# Papkalar
-SCRIPTS_DIR = "scripts"
-LOGS_DIR = "logs"
-VENV_DIR = "venvs"  # Har bir foydalanuvchi uchun virtual environment
+# Papkalar - TO'G'RI YO'LLAR
+BASE_DIR = Path(__file__).parent
+SCRIPTS_DIR = BASE_DIR / "scripts"
+LOGS_DIR = BASE_DIR / "logs"
+VENV_DIR = BASE_DIR / "venvs"
 
 for dir_name in [SCRIPTS_DIR, LOGS_DIR, VENV_DIR]:
-    Path(dir_name).mkdir(exist_ok=True)
+    dir_name.mkdir(exist_ok=True)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -43,13 +44,28 @@ def save_user_data(data):
     with open(user_data_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+def get_user_script_dir(user_id):
+    """Foydalanuvchi skript papkasini qaytaradi"""
+    user_dir = SCRIPTS_DIR / str(user_id)
+    user_dir.mkdir(exist_ok=True)
+    return user_dir
+
+def get_script_path(user_id, script_name):
+    """Skriptning to'g'ri yo'lini qaytaradi"""
+    user_dir = get_user_script_dir(user_id)
+    return user_dir / script_name
+
+def get_log_path(user_id, script_name):
+    """Log faylning to'g'ri yo'lini qaytaradi"""
+    return LOGS_DIR / f"{user_id}_{script_name}.log"
+
 def get_python_path(user_id):
     """Foydalanuvchi uchun python path"""
-    venv_path = Path(VENV_DIR) / user_id
+    venv_path = VENV_DIR / str(user_id)
     if venv_path.exists():
-        if os.name == 'nt':  # Windows
+        if os.name == 'nt':
             python_path = venv_path / "Scripts" / "python.exe"
-        else:  # Linux/Mac
+        else:
             python_path = venv_path / "bin" / "python"
         if python_path.exists():
             return str(python_path)
@@ -87,7 +103,7 @@ def run_script_universal(script_path, user_id, script_name, context):
             text=True,
             bufsize=1,
             universal_newlines=True,
-            cwd=str(script_path.parent)  # Skript papkasida ishlash
+            cwd=str(script_path.parent)
         )
         
         script_key = f"{user_id}_{script_name}"
@@ -97,12 +113,12 @@ def run_script_universal(script_path, user_id, script_name, context):
             "process": process,
             "start_time": datetime.now().isoformat(),
             "status": "running",
-            "input_count": 0
+            "input_count": 0,
+            "script_path": str(script_path)
         }
         
-        log_file = Path(LOGS_DIR) / f"{user_id}_{script_name}.log"
+        log_file = get_log_path(user_id, script_name)
         
-        # Input handler
         def input_handler():
             while process.poll() is None:
                 try:
@@ -120,18 +136,14 @@ def run_script_universal(script_path, user_id, script_name, context):
                     logger.error(f"Input error: {e}")
                     break
         
-        # Output handler
         def output_handler():
             while process.poll() is None:
                 try:
-                    # Stdout
                     stdout_line = process.stdout.readline()
                     if stdout_line:
                         with open(log_file, 'a', encoding='utf-8') as f:
                             f.write(f"[STDOUT] {stdout_line}")
                             f.flush()
-                        
-                        # Telegramga yuborish
                         try:
                             context.bot.send_message(
                                 chat_id=int(user_id),
@@ -141,17 +153,15 @@ def run_script_universal(script_path, user_id, script_name, context):
                         except Exception as e:
                             logger.error(f"Telegram send error: {e}")
                     
-                    # Stderr
                     stderr_line = process.stderr.readline()
                     if stderr_line:
                         with open(log_file, 'a', encoding='utf-8') as f:
                             f.write(f"[STDERR] {stderr_line}")
                             f.flush()
-                        
                         try:
                             context.bot.send_message(
                                 chat_id=int(user_id),
-                                text=f"⚠️ *{script_name}* xatolik:\n```\n{stderr_line.strip()[:1000]}\n```",
+                                text=f"⚠️ *{script_name}*:\n```\n{stderr_line.strip()[:1000]}\n```",
                                 parse_mode="Markdown"
                             )
                         except Exception as e:
@@ -161,16 +171,13 @@ def run_script_universal(script_path, user_id, script_name, context):
                     logger.error(f"Output error: {e}")
                     break
         
-        # Threadlarni ishga tushirish
         input_thread = threading.Thread(target=input_handler, daemon=True)
         output_thread = threading.Thread(target=output_handler, daemon=True)
         input_thread.start()
         output_thread.start()
         
-        # Process tugashini kutish
         process.wait()
         
-        # Statusni yangilash
         if script_key in running_scripts:
             running_scripts[script_key]["status"] = "stopped"
             running_scripts[script_key]["end_time"] = datetime.now().isoformat()
@@ -236,8 +243,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👋 Assalomu alaykum, {user.first_name}!\n\n"
         f"🤖 **Universal Script Bot**\n"
         f"✅ Har qanday skriptni ishga tushiraman\n"
-        f"✅ Termux, server, hamma joyda ishlaydi\n"
-        f"✅ Requirements.txt ni o'rnataman\n\n"
+        f"✅ Termux, server, hamma joyda ishlaydi\n\n"
         f"📌 Tugmalardan foydalaning:",
         reply_markup=reply_markup,
         parse_mode="Markdown"
@@ -253,7 +259,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             "📤 Python skript faylingizni (.py) yuboring.\n\n"
             "✅ Har qanday skript ishlaydi\n"
-            "✅ Termux, server, hamma joyda\n"
             "⚠️ Fayl nomi ingliz tilida bo'lsin"
         )
         context.user_data['waiting_for_script'] = True
@@ -261,15 +266,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "upload_requirements":
         await query.edit_message_text(
             "📦 `requirements.txt` faylini yuboring.\n\n"
-            "✅ Avtomatik o'rnatiladi\n"
-            "✅ Skript bilan birga ishlaydi"
+            "✅ Avtomatik o'rnatiladi"
         )
         context.user_data['waiting_for_requirements'] = True
     
     elif query.data == "create_venv":
         await query.edit_message_text("🔧 Virtual environment yaratilmoqda...")
         
-        venv_path = Path(VENV_DIR) / user_id
+        venv_path = VENV_DIR / str(user_id)
         if not venv_path.exists():
             try:
                 subprocess.run(
@@ -317,10 +321,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif query.data.startswith("run_"):
         script_name = query.data.replace("run_", "")
-        script_path = Path(SCRIPTS_DIR) / user_id / script_name
+        
+        # TO'G'RI YO'L - get_script_path funksiyasi orqali
+        script_path = get_script_path(user_id, script_name)
         
         if not script_path.exists():
-            await query.edit_message_text("❌ Skript topilmadi!")
+            await query.edit_message_text(f"❌ Skript topilmadi!\nYo'l: {script_path}")
             return
         
         key = f"{user_id}_{script_name}"
@@ -348,6 +354,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.message.reply_text(
             f"✅ *{script_name}* ishga tushdi!\n\n"
+            f"📁 Yo'l: `{script_path}`\n"
             f"📤 Ma'lumot yuborish uchun 'Ma'lumot yuborish' tugmasini bosing.",
             parse_mode="Markdown"
         )
@@ -433,6 +440,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text += f"{emoji} *{script}*\n"
                     text += f"   📤 Input: {status.get('input_count', 0)}\n"
                     text += f"   ⏱ Boshlangan: {status['start_time'][:19]}\n"
+                    text += f"   📁 Yo'l: {status.get('script_path', 'N/A')}\n"
                     if status["status"] != "running":
                         text += f"   ⏹ Tugagan: {status.get('end_time', 'N/A')[:19]}\n"
                 else:
@@ -447,7 +455,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id in user_data and user_data[user_id]["scripts"]:
             keyboard = []
             for script in user_data[user_id]["scripts"]:
-                log_file = Path(LOGS_DIR) / f"{user_id}_{script}.log"
+                log_file = get_log_path(user_id, script)
                 if log_file.exists():
                     keyboard.append([InlineKeyboardButton(f"📄 {script}", callback_data=f"log_{script}")])
             
@@ -462,7 +470,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif query.data.startswith("log_"):
         script_name = query.data.replace("log_", "")
-        log_file = Path(LOGS_DIR) / f"{user_id}_{script_name}.log"
+        log_file = get_log_path(user_id, script_name)
         
         if log_file.exists():
             with open(log_file, 'r', encoding='utf-8') as f:
@@ -502,11 +510,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
         
-        script_path = Path(SCRIPTS_DIR) / user_id / script_name
+        script_path = get_script_path(user_id, script_name)
         if script_path.exists():
             script_path.unlink()
             
-            log_file = Path(LOGS_DIR) / f"{user_id}_{script_name}.log"
+            log_file = get_log_path(user_id, script_name)
             if log_file.exists():
                 log_file.unlink()
             
@@ -537,8 +545,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📄 **Log** - Chiqishlarni ko'rish\n"
             "🔧 **Venv** - Virtual environment yaratish\n"
             "❌ **O'chirish** - Skriptni o'chirish\n\n"
-            "✅ Har qanday skript ishlaydi!\n"
-            "✅ Termux, server, hamma joyda!",
+            "✅ Har qanday skript ishlaydi!",
             parse_mode="Markdown"
         )
     
@@ -588,8 +595,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Requirements.txt
     if context.user_data.get('waiting_for_requirements') or file_name == "requirements.txt":
         try:
-            user_dir = Path(SCRIPTS_DIR) / user_id
-            user_dir.mkdir(exist_ok=True)
+            user_dir = get_user_script_dir(user_id)
             file_path = user_dir / "requirements.txt"
             
             file = await document.get_file()
@@ -598,7 +604,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['waiting_for_requirements'] = False
             await update.message.reply_text(
                 f"✅ `requirements.txt` yuklandi!\n"
-                f"▶️ Skriptni ishga tushirganda avtomatik o'rnatiladi.",
+                f"📁 Yo'l: `{file_path}`",
                 parse_mode="Markdown"
             )
             return
@@ -615,9 +621,8 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Faqat .py fayl yuboring!")
         return
     
-    # Skriptni saqlash
-    user_dir = Path(SCRIPTS_DIR) / user_id
-    user_dir.mkdir(exist_ok=True)
+    # Skriptni saqlash - TO'G'RI YO'L
+    user_dir = get_user_script_dir(user_id)
     file_path = user_dir / file_name
     
     try:
@@ -636,8 +641,8 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"✅ *{file_name}* yuklandi!\n\n"
             f"📊 Hajm: {document.file_size} bayt\n"
-            f"▶️ Ishga tushirish uchun tugmani bosing.\n"
-            f"📦 Agar kerak bo'lsa `requirements.txt` yuboring.",
+            f"📁 Yo'l: `{file_path}`\n"
+            f"▶️ Ishga tushirish uchun tugmani bosing.",
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -646,8 +651,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 **Universal Script Bot**\n\n"
-        "Har qanday skriptni ishga tushiradi!\n"
-        "Termux, server, hamma joyda!\n\n"
+        "Har qanday skriptni ishga tushiradi!\n\n"
         "/start - Boshlash\n"
         "/help - Yordam\n"
         "/cancel - Bekor qilish",
@@ -666,8 +670,6 @@ def main():
     
     print("="*60)
     print("🤖 Universal Script Bot ishga tushdi!")
-    print("✅ Har qanday skript ishlaydi")
-    print("✅ Termux, server, hamma joyda")
     print(f"📁 Skriptlar: {SCRIPTS_DIR}")
     print(f"📁 Loglar: {LOGS_DIR}")
     print(f"📁 Virtual env: {VENV_DIR}")
