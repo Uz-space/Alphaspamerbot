@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-tron__3_.php dan Python'ga to'g'ridan-to'g'ri (1:1) o'girilgan versiya.
-Barcha class va funksiyalar asl PHP koddagi mantiqni saqlagan holda ko'chirildi.
+TRON Telegram Bot - To'liq birlashtirilgan versiya
+tron.py va bot.py birlashtirilgan - Railwayda ishlatish uchun
 """
 
 import os
@@ -11,12 +11,24 @@ import sys
 import time
 import json
 import base64
+import threading
 import subprocess
 import tempfile
+import logging
+from datetime import datetime
 from urllib.parse import urlencode, urlparse, quote_plus
+from typing import Optional, Dict, Any
 
-import requests as _http  # pip install requests --break-system-packages
+import requests as _http
 import urllib3
+
+# Telegram bot
+try:
+    from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+    from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+except ImportError:
+    print("Iltimos, telegram kutubxonasini o'rnating: pip install python-telegram-bot --upgrade")
+    sys.exit(1)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -34,71 +46,73 @@ recaptcha = "6LeBFBclAAAAANoZIrwXU1cPgYDDM7f1ehHpzXWj"
 hcaptcha = ""
 
 MAXWIN_DICE = 1000
-
-# ========== classB.php dan barcha kod (to'liq) ==========
 class_version = "1.1.7"
 
 # Warna teks
-n = "\n"          # Baris baru
-d = "\033[0m"     # Reset
-m = "\033[1;31m"  # Merah
-h = "\033[1;32m"  # Hijau
-k = "\033[1;33m"  # Kuning
-b = "\033[1;34m"  # Biru
-u = "\033[1;35m"  # Ungu
-c = "\033[1;36m"  # Cyan
-p = "\033[1;37m"  # Putih
-o = "\033[38;5;214m"       # Warna mendekati orange
-o2 = "\033[01;38;5;208m"   # Warna mendekati orange
-
-# Warna teks tambahan
-r = "\033[38;5;196m"   # Merah terang
-g = "\033[38;5;46m"    # Hijau terang
-y = "\033[38;5;226m"   # Kuning terang
-b1 = "\033[38;5;21m"   # Biru terang
-p1 = "\033[38;5;13m"   # Ungu terang
-c1 = "\033[38;5;51m"   # Cyan terang
-gr = "\033[38;5;240m"  # Abu-abu gelap
+n = "\n"
+d = "\033[0m"
+m = "\033[1;31m"
+h = "\033[1;32m"
+k = "\033[1;33m"
+b = "\033[1;34m"
+u = "\033[1;35m"
+c = "\033[1;36m"
+p = "\033[1;37m"
+o = "\033[38;5;214m"
+o2 = "\033[01;38;5;208m"
+r = "\033[38;5;196m"
+g = "\033[38;5;46m"
+y = "\033[38;5;226m"
+b1 = "\033[38;5;21m"
+p1 = "\033[38;5;13m"
+c1 = "\033[38;5;51m"
+gr = "\033[38;5;240m"
 
 # Warna latar belakang
-mp = "\033[101m\033[1;37m"  # Latar belakang merah
-hp = "\033[102m\033[1;30m"  # Latar belakang hijau
-kp = "\033[103m\033[1;37m"  # Latar belakang kuning
-bp = "\033[104m\033[1;37m"  # Latar belakang biru
-up = "\033[105m\033[1;37m"  # Latar belakang ungu
-cp = "\033[106m\033[1;37m"  # Latar belakang cyan
-pm = "\033[107m\033[1;31m"  # Latar belakang putih (merah teks)
-ph = "\033[107m\033[1;32m"  # Latar belakang putih (hijau teks)
-pk = "\033[107m\033[1;33m"  # Latar belakang putih (kuning teks)
-pb = "\033[107m\033[1;34m"  # Latar belakang putih (biru teks)
-pu = "\033[107m\033[1;35m"  # Latar belakang putih (ungu teks)
-pc = "\033[107m\033[1;36m"  # Latar belakang putih (cyan teks)
-yh = d + "\033[43;30m"      # Latar belakang kuning (black teks)
-
-# Warna latar belakang tambahan
-bg_r = "\033[48;5;196m"   # Latar belakang merah terang
-bg_g = "\033[48;5;46m"    # Latar belakang hijau terang
-bg_y = "\033[48;5;226m"   # Latar belakang kuning terang
-bg_b1 = "\033[48;5;21m"   # Latar belakang biru terang
-bg_p1 = "\033[48;5;13m"   # Latar belakang ungu terang
-bg_c1 = "\033[48;5;51m"   # Latar belakang cyan terang
-bg_gr = "\033[48;5;240m"  # Latar belakang abu-abu gelap
-
-# YouTube LIST O'CHIRILDI
-
+mp = "\033[101m\033[1;37m"
+hp = "\033[102m\033[1;30m"
+kp = "\033[103m\033[1;37m"
+bp = "\033[104m\033[1;37m"
+up = "\033[105m\033[1;37m"
+cp = "\033[106m\033[1;37m"
+pm = "\033[107m\033[1;31m"
+ph = "\033[107m\033[1;32m"
+pk = "\033[107m\033[1;33m"
+pb = "\033[107m\033[1;34m"
+pu = "\033[107m\033[1;35m"
+pc = "\033[107m\033[1;36m"
+yh = d + "\033[43;30m"
+bg_r = "\033[48;5;196m"
+bg_g = "\033[48;5;46m"
+bg_y = "\033[48;5;226m"
+bg_b1 = "\033[48;5;21m"
+bg_p1 = "\033[48;5;13m"
+bg_c1 = "\033[48;5;51m"
+bg_gr = "\033[48;5;240m"
 
 # ==========================================================
-#                    Yordamchi funksiya
+#                    TELEGRAM KONFIGURATSIYA
 # ==========================================================
+
+# O'ZGARTIRING! @BotFather dan olingan token
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+
+# O'ZGARTIRING! @userinfobot dan olingan ID
+ADMIN_ID = int(os.environ.get("ADMIN_ID", 123456789))
+
+# Logging sozlamalari
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# ==========================================================
+#                    YORDAMCHI FUNKSIYALAR
+# ==========================================================
+
 def safe_json_loads(s, debug_tag="response"):
-    """json.loads ning "chidamli" versiyasi.
-
-    Ba'zan server (yoki curl -L redirectni kuzatish jarayonida) JSON
-    qiymatidan keyin qo'shimcha matn qaytarishi mumkin ('Extra data' xatosi).
-    Bu funksiya faqat BIRINCHI to'g'ri JSON qiymatini o'qib, qolganini
-    e'tiborsiz qoldiradi. Agar umuman JSON topilmasa, xom javobni
-    'debug_<tag>.txt' fayliga yozib, None qaytaradi (dastur qulamaydi).
-    """
+    """json.loads ning chidamli versiyasi"""
     if s is None:
         return None
     text = s.strip()
@@ -119,23 +133,13 @@ def safe_json_loads(s, debug_tag="response"):
             pass
         return None
 
+# ==========================================================
+#                        REQUESTS
+# ==========================================================
 
-# ==========================================================
-#                        Requests
-# ==========================================================
 class Requests:
-    """PHP dagi Requests classining ekvivalenti.
-
-    MUHIM: Bu yerda Python 'requests' kutubxonasi EMAS, balki tizimdagi
-    haqiqiy 'curl' dasturi (subprocess orqali) ishlatiladi. Sababi -
-    PHP'ning curl kengaytmasi ham xuddi shu libcurl'ga tayanadi, shuning
-    uchun ikkalasi bir xil tarmoq/TLS "imzosi" bilan so'rov yuboradi.
-    Python 'requests' kutubxonasi boshqacha TLS fingerprint beradi va
-    ba'zi saytlar (Cloudflare himoyasidagilar) buni "botga o'xshaydi"
-    deb sessiyani rad etishi mumkin - cookie 100% to'g'ri bo'lsa ham.
-    Shu sababli bu yerda tizim curl'i orqali so'rov yuboriladi.
-    """
-
+    """Curl orqali so'rov yuborish"""
+    
     @staticmethod
     def Curl(url, header=0, post=0, data_post=0, cookie=0, proxy=0, skip=0):
         while True:
@@ -161,7 +165,6 @@ class Requests:
                         cmd += ["-H", hline]
 
                 if cookie:
-                    # cookie -> fayl nomi (PHP dagi CURLOPT_COOKIEFILE/COOKIEJAR ekvivalenti)
                     cmd += ["-b", cookie, "-c", cookie]
 
                 if proxy:
@@ -177,16 +180,12 @@ class Requests:
                 try:
                     result = subprocess.run(cmd, capture_output=True, timeout=45)
                 except FileNotFoundError:
-                    print(Display.Error(
-                        "curl dasturi topilmadi! O'rnating: pkg install curl (Termux) "
-                        "yoki apt install curl (Linux)\n"
-                    ), end="")
+                    print(Display.Error("curl dasturi topilmadi!"), end="")
                     time.sleep(3)
                     continue
                 except subprocess.TimeoutExpired:
                     print("Check your Connection!")
                     time.sleep(2)
-                    print("\r                         \r", end="")
                     continue
 
                 if result.returncode != 0:
@@ -203,17 +202,13 @@ class Requests:
                 if skip:
                     return None
 
-                # Redirect (-L) bo'lsa header faylida bir nechta blok bo'ladi
-                # (har bir hop uchun alohida), oxirgisi - yakuniy javob header'lari.
                 blocks = [blk for blk in head_raw.split("\r\n\r\n") if blk.strip()]
                 head_lines = blocks[-1] if blocks else head_raw.strip()
-
                 body = body_bytes.decode("utf-8", errors="replace")
 
                 if not body:
                     print("Check your Connection!")
                     time.sleep(2)
-                    print("\r                         \r", end="")
                     continue
 
                 return [head_lines, body]
@@ -261,12 +256,13 @@ class Requests:
     def postXproxy(url, head=0, data_post=0, proxy=None):
         return Requests.Curl(url, head, 1, data_post, 1, proxy)
 
+# ==========================================================
+#                         DISPLAY
+# ==========================================================
 
-# ==========================================================
-#                         Display
-# ==========================================================
 class Display:
-
+    """Ekran chiqishlari"""
+    
     @staticmethod
     def Clear():
         if os.name == "posix":
@@ -299,41 +295,16 @@ class Display:
 
     @staticmethod
     def Ban(title_, versi_, server=0):
-        api = Display.ipApi()
         Display.Clear()
-        if api:
-            os.environ["TZ"] = api.get("timezone", "UTC")
-            try:
-                time.tzset()
-            except AttributeError:
-                pass
-            line = f"{api.get('city','')}, {api.get('regionName','')}, {api.get('country','')}"
-            pad_total = max(45 - len(line), 0)
-            left = pad_total // 2
-            right = pad_total - left
-            print(f"{' ' * left}{line}{' ' * right}{n}", end="")
-
-        print("\033[1;36m", end="")
-        print("\u2554" + "\u2550" * 40 + "\u2557\n", end="")
-        print(f"\u2551          TRONPICK BOT v{versi_}      \u2551\n", end="")
-        print("\u255a" + "\u2550" * 40 + "\u255d\n", end="")
-        print("\033[0m\n", end="")
-
-        label = "ALPHA PREMIUM SCRIPT"
-        pad_total = max(45 - len(label), 0)
+        line = f"TRON PICK BOT v{versi_}"
+        pad_total = max(45 - len(line), 0)
         left = pad_total // 2
         right = pad_total - left
-        print(f"{mp}{' ' * left}{label}{' ' * right}{d}{n}{n}", end="")
-
-    @staticmethod
-    def ipApi():
-        try:
-            r = json.loads(_http.get("http://ip-api.com/json", timeout=10).text)
-            if r.get("status") == "success":
-                return r
-        except Exception:
-            return None
-        return None
+        print("\033[1;36m", end="")
+        print("\u2554" + "\u2550" * 40 + "\u2557\n", end="")
+        print(f"\u2551{' ' * left}{line}{' ' * right}\u2551\n", end="")
+        print("\u255a" + "\u2550" * 40 + "\u255d\n", end="")
+        print("\033[0m\n", end="")
 
     @staticmethod
     def Error(except_):
@@ -347,10 +318,10 @@ class Display:
     def Isi(msg):
         return f"{m}\u256d[{p}Input {msg}{m}]{n}{m}\u2570> {h}"
 
+# ==========================================================
+#                        FUNCTIONS
+# ==========================================================
 
-# ==========================================================
-#                        Functions
-# ==========================================================
 class Functions:
     configFile = "tronpick_config.json"
 
@@ -412,18 +383,9 @@ class Functions:
         Functions._save_config(config)
 
     @staticmethod
-    def view(youtube_):
-        tanggal = time.strftime("%d%m%y")
+    def getConfig(key):
         config = Functions._load_config()
-        view_ = config.get("view")
-        if tanggal == view_:
-            return 0
-        config["view"] = tanggal
-        if os.name == "posix":
-            os.system(f"termux-open-url {youtube_}")
-        else:
-            os.system(f"start {youtube_}")
-        Functions._save_config(config)
+        return config.get(key)
 
     @staticmethod
     def HiddenConfig(key, data):
@@ -433,33 +395,10 @@ class Functions:
             Functions._save_config(config)
         return config[key]
 
-    @staticmethod
-    def temporary(newdata, data=0):
-        if not data:
-            data = {}
-        merged = dict(data)
-        merged.update(newdata)
-        return merged
-
-    @staticmethod
-    def cfDecodeEmail(encodedString):
-        kk = int(encodedString[0:2], 16)
-        email = ""
-        i = 2
-        while i < len(encodedString) - 1:
-            email += chr(int(encodedString[i:i + 2], 16) ^ kk)
-            i += 2
-        return email
-
-    @staticmethod
-    def getConfig(key):
-        config = Functions._load_config()
-        return config.get(key)
-
-
 # ==========================================================
-#                        HtmlScrap
+#                        HTMLSCRAP
 # ==========================================================
+
 class HtmlScrap:
     def __init__(self):
         self.captcha_re = r'class=["\']([^"\']+)["\'][^>]*data-sitekey=["\']([^"\']+)["\']'
@@ -514,10 +453,7 @@ class HtmlScrap:
         else:
             warning_parts = html.split("html: '")
             warning = warning_parts[1].split("'")[0] if len(warning_parts) > 1 else None
-
-            ban_parts = html.split(
-                '<div class="alert text-center alert-danger"><i class="fas fa-exclamation-circle"></i> Your account'
-            )
+            ban_parts = html.split('<div class="alert text-center alert-danger"><i class="fas fa-exclamation-circle"></i> Your account')
             ban = ban_parts[1].split("</div>")[0] if len(ban_parts) > 1 else None
 
             invalid = "You are sending an invalid amount" if re.search(r"invalid amount", html) else False
@@ -548,30 +484,22 @@ class HtmlScrap:
         data["response"] = response
         return data
 
+# ==========================================================
+#                         CAPTCHA
+# ==========================================================
 
-# ==========================================================
-#                         Captcha
-# ==========================================================
 class Captcha:
     def __init__(self):
-        if not Functions.getConfig("type"):
-            print(f"{o}Select Apikey\n", end="")
-            Display.Menu(1, "Multibot")
-            Display.Menu(2, "Xevil")
-            print(f"{o}Please input number only\n", end="")
-            Functions.setConfig("type")
-            Display.Line()
-
-        if Functions.getConfig("type") == "1":
+        self.config = Functions._load_config()
+        self.provider = self.config.get("provider", "Multibot")
+        
+        # API key ni olish
+        if self.provider == "Multibot":
             self.url = "http://api.multibot.in/"
-            Display.Cetak("Register", "http://api.multibot.in")
-            self.key = Functions.setConfig("multibot_apikey")
-            self.provider = Functions.HiddenConfig("provider", "Multibot")
+            self.key = self.config.get("multibot_apikey", "")
         else:
             self.url = "https://sctg.xyz/"
-            Display.Cetak("Register", "t.me/Xevil_check_bot?start=1204538927")
-            self.key = Functions.setConfig("xevil_apikey") + "|SOFTID1204538927"
-            self.provider = Functions.HiddenConfig("provider", "Xevil")
+            self.key = self.config.get("xevil_apikey", "") + "|SOFTID1204538927"
 
     def _in_api(self, content, method, header=0):
         param = f"key={self.key}&json=1&{content}"
@@ -666,10 +594,13 @@ class Captcha:
         return mapping.get(method)
 
     def getBalance(self):
-        res = json.loads(
-            _http.get(self.url + "res.php?action=userinfo&key=" + self.key, timeout=30).text
-        )
-        return res.get("balance")
+        try:
+            res = json.loads(
+                _http.get(self.url + "res.php?action=userinfo&key=" + self.key, timeout=30).text
+            )
+            return res.get("balance", 0)
+        except Exception:
+            return 0
 
     def RecaptchaV2(self, sitekey, pageurl):
         data = urlencode({"method": "userrecaptcha", "sitekey": sitekey, "pageurl": pageurl})
@@ -683,328 +614,22 @@ class Captcha:
         data = urlencode({"method": "turnstile", "sitekey": sitekey, "pageurl": pageurl})
         return self._getResult(data, "GET")
 
-    def Authkong(self, sitekey, pageurl):
-        data = urlencode({"method": "authkong", "sitekey": sitekey, "pageurl": pageurl})
-        return self._getResult(data, "GET")
-
-    def Ocr(self, img):
-        if self.provider == "Xevil":
-            data = f"method=base64&body={img}"
-        else:
-            data = urlencode({"method": "universal", "body": img})
-        return self._getResult(data, "POST")
-
-    def AntiBot(self, source):
-        try:
-            main = source.split("Bot links")[1].split("data:image/png;base64,")[1].split('"')[0]
-        except IndexError:
-            return 0
-        if not main:
-            return 0
-
-        if self.provider == "Xevil":
-            data = f"method=antibot&main={main}"
-        else:
-            data = {"method": "antibot", "main": main}
-
-        src = source.split(r'rel=\"')
-        for xidx, sour in enumerate(src):
-            if xidx == 0:
-                continue
-            no = sour.split('\\"')[0]
-            if self.provider == "Xevil":
-                img = sour.split("data:image/png;base64,")[1].split('\\"')[0]
-                data += f"&{no}={img}"
-            else:
-                img = sour.split('src=\\"')[1].split('\\"')[0]
-                data[no] = img
-
-        if self.provider == "Xevil":
-            res = self._getResult(data, "POST")
-        else:
-            data = urlencode(data)
-            ua = "application/x-www-form-urlencoded"
-            res = self._getResult(data, "POST", ua)
-
-        if res:
-            return "+" + str(res).replace(",", "+")
-        return 0
-
-    def Teaserfast(self, main, small):
-        if self.provider == "Multibot":
-            return {"error": True, "msg": "not support key!"}
-        data = urlencode({"method": "teaserfast", "main_photo": main, "task": small})
-        ua = "application/x-www-form-urlencoded"
-        return self._getResult(data, "POST", ua)
-
-
 # ==========================================================
-#                          Iewil
+#                            BOT
 # ==========================================================
-class Iewil:
-    def __init__(self, apikey=None):
-        self.url = "https://iewilbot.my.id/res.php"
-        self.apikey = apikey
 
-    def _requests(self, postParameter):
-        try:
-            resp = _http.post(self.url, data=postParameter, timeout=30)
-            if resp.status_code != 200:
-                return json.dumps({"status": 0, "message": f"iewilbot HTTP code {resp.status_code}"})
-            return resp.text
-        except Exception as e:
-            return json.dumps({"status": 0, "message": str(e)})
-
-    def _getResult(self, postParameter):
-        try:
-            r = json.loads(self._requests(postParameter))
-        except Exception:
-            r = None
-
-        if r and r.get("status"):
-            return r.get("result")
-        if r and r.get("msg"):
-            print(str(r["msg"])[:30], end="")
-            time.sleep(2)
-            print("\r                                   \r", end="")
-        if not r:
-            print("captcha cannot be solve", end="")
-            time.sleep(2)
-            print("\r                                   \r", end="")
-        return None
-
-    def IconCoordiant(self, base64Img):
-        postParameter = urlencode({"img": base64Img, "method": "icon_coordinat"})
-        return self._getResult(postParameter)
-
-    def Turnstile(self, sitekey, pageurl):
-        postParameter = urlencode({"pageurl": pageurl, "sitekey": sitekey, "method": "turnstile"})
-        return self._getResult(postParameter)
-
-    def gp(self, src):
-        postParameter = urlencode({"main": base64.b64encode(src.encode()).decode(), "method": "gp"})
-        return self._getResult(postParameter)
-
-    def altcha(self, signature, salt, challenge):
-        postParameter = urlencode(
-            {"signature": signature, "salt": salt, "challenge": challenge, "method": "altcha"}
-        )
-        return self._getResult(postParameter)
-
-    def Antibot(self, source):
-        data = {"method": "antibot"}
-        try:
-            main = source.split("Bot links")[1].split('src="')[1].split('"')[0]
-        except IndexError:
-            main = None
-        data["main"] = main
-
-        src = source.split(r'rel=\"')
-        for xidx, sour in enumerate(src):
-            if xidx == 0:
-                continue
-            no = sour.split('\\"')[0]
-            img = sour.split('src=\\"')[1].split('\\"')[0]
-            data[no] = img
-
-        postParameter = urlencode(data)
-        try:
-            cap = json.loads(
-                _http.post("https://iewilbot.my.id/res.php", data=postParameter, timeout=30).text
-            )
-        except Exception:
-            return 0
-        if not cap.get("status"):
-            return 0
-        return cap.get("result")
-
-
-# ==========================================================
-#                        FreeCaptcha
-# ==========================================================
-class FreeCaptcha:
-    @staticmethod
-    def Icon_hash(header):
-        url = host + "system/libs/captcha/request.php"
-        head = header + ["X-Requested-With: XMLHttpRequest"]
-        getCap = json.loads((Requests.post(url, head, "cID=0&rT=1&tM=light") or [None, "{}"])[1])
-        if not getCap:
-            url = host + "src/captcha-request.php"
-            getCap = json.loads((Requests.post(url, head, "cID=0&rT=1&tM=light") or [None, "{}"])[1])
-
-        head2 = header + ["accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"]
-        data = {}
-        for cid in getCap:
-            resp = Requests.get(f"{url}?cid=0&hash={cid}", head2)
-            data[cid] = base64.b64encode(resp[1].encode() if isinstance(resp[1], str) else resp[1]).decode()
-
-        data_enc = urlencode(data)
-        cap = json.loads((Requests.post("https://iewilbot.my.id/res.php", "", data_enc) or [None, "{}"])[1])
-        if not cap.get("status"):
-            return 0
-        Requests.postXskip(url, head, f"cID=0&pC={cap['result']}&rT=2")
-        return cap.get("result")
-
-
-# ==========================================================
-#                        Cloudflare
-# ==========================================================
-class Cloudflare:
+class TronBot:
     def __init__(self):
-        self.python = (
-            "aW1wb3J0IG9zLCBzeXMsIHRpbWUsIGpzb24KZnJvbSBzZWxlZHJvaWQgaW1wb3J0IHdlYmRyaXZlcgpmcm9tIHNlbGVkcm9pZC53ZWJkcml2ZXIuY29tbW9uLmJ5IGltcG9ydCBCeQoKZHJpdmVyID0gd2ViZHJpdmVyLkNocm9tZShndWk9RmFsc2UpCmhvc3QgPSBzeXMuYXJndlsxXQoKZGVmIENsb3VkZmxhcmUoKToKCXRpdGxlID0gZHJpdmVyLnRpdGxlCglpZiBhbnkoc3ViLmxvd2VyKCkgaW4gdGl0bGUubG93ZXIoKSBmb3Igc3ViIGluIFsiY2xvdWRmbGFyZSIsImp1c3QgYSBtb21lbnQuLi4iXSk6CgkJdGltZS5zbGVlcCgxMCkKCQlyZXR1cm4gRmFsc2UKCWVsc2U6CgkJcmV0dXJuIFRydWUKCnRyeToKCWRyaXZlci5nZXQoaG9zdCkKCXdoaWxlIG5vdCBDbG91ZGZsYXJlKCk6CgkJdGltZS5zbGVlcCgzKQoJCgljZl9jbGVhcmFuY2UgPSBkcml2ZXIuZ2V0X2Nvb2tpZSgiY2ZfY2xlYXJhbmNlIikKCXVzZXJfYWdlbnQgPSBkcml2ZXIudXNlcl9hZ2VudApleGNlcHQgRXhjZXB0aW9uIGFzIGU6CglwcmludChmIntlfSIpCmZpbmFsbHk6Cgl0aXRsZSA9IGRyaXZlci50aXRsZQoJaWYgYW55KHN1Yi5sb3dlcigpIGluIHRpdGxlLmxvd2VyKCkgZm9yIHN1YiBpbiBbImNsb3VkZmxhcmUiLCJqdXN0IGEgbW9tZW50Li4uIl0pOgoJCWRhdGEgPSB7CgkJImNmX2NsZWFyYW5jZSIgOiBGYWxzZSwKCQkidXNlci1hZ2VudCIgOiB1c2VyX2FnZW50CgkJfQoJZWxzZToKCQlkYXRhID0gewoJCSJjZl9jbGVhcmFuY2UiIDogY2ZfY2xlYXJhbmNlLnNwbGl0KCI9IilbMV0sCgkJInVzZXItYWdlbnQiIDogdXNlcl9hZ2VudAoJCX0KCXdpdGggb3BlbignY2YuanNvbicsICd3JykgYXMgZmlsZToKCQlqc29uLmR1bXAoZGF0YSwgZmlsZSwgaW5kZW50PTQpCglkcml2ZXIuY2xvc2UoKQo="
-        )
-        self.JsonFile = "tronpick_config.json"
-        self.pythonFile = "cf.py"
-        self.bypassFile = "cf.json"
-
-    def _getOriConfig(self):
-        with open(self.JsonFile, "r") as f:
-            config = json.load(f)
-        return [config.get("cookie"), config.get("user_agent")]
-
-    def BypassCf(self, host_):
-        with open(self.pythonFile, "wb") as f:
-            f.write(base64.b64decode(self.python))
-        time.sleep(2)
-        subprocess.run(["python", self.pythonFile, host_])
-        time.sleep(2)
-        os.remove(self.pythonFile)
-        return self._editConfig()
-
-    def _editConfig(self):
-        getOriConfig = self._getOriConfig()
-        with open(self.bypassFile, "r") as f:
-            new_data = json.load(f)
-        new_cf_clearance = new_data.get("cf_clearance")
-        os.remove(self.bypassFile)
-
-        cf_clearance_ori = getOriConfig[0].split("cf_clearance=")[1].split(";")[0]
-        data = {
-            "cookie": getOriConfig[0].replace(cf_clearance_ori, new_cf_clearance),
-            "user-agent": new_data.get("user-agent"),
-        }
-        return data
-
-
-# ==========================================================
-#                            Bot
-# ==========================================================
-if class_version < class_require:
-    print("\033[1;31mVersi class sudah kadaluarsa\n", end="")
-    sys.exit()
-
-
-class Bot:
-    def __init__(self):
-        os.system("cls" if os.name == "nt" else "clear")
-        print("\033[1;36m", end="")
-        print("\u2554" + "\u2550" * 40 + "\u2557\n", end="")
-        print(f"\u2551         TRONPICK BOT v{versi}      \u2551\n", end="")
-        print("\u255a" + "\u2550" * 40 + "\u255d\n", end="")
-        print("\033[0m\n", end="")
-
-        self.iewil = None
-        self._enter_cookie_flow()
-
-    def _enter_cookie_flow(self):
-        while True:
-            if not Functions.getConfig("cookie"):
-                Display.Line()
-
-            self.cf = Cloudflare()
-            self.cookie = Functions.setConfig("cookie")
-            self.uagent = Functions.setConfig("user_agent")
-            self.captcha = Captcha()
-
-            if len(sys.argv) > 1:
-                try:
-                    cek = json.loads(
-                        _http.get("https://api-iewil.my.id/getInfo?key=" + sys.argv[1], timeout=30).text
-                    )
-                except Exception:
-                    cek = {}
-                self.iewil = Iewil(sys.argv[1]) if cek.get("status") else None
-
-            if self.iewil:
-                Display.Line()
-                print(Display.Sukses("pertamax status is activated"), end="")
-                time.sleep(5)
-
-            self.scrap = HtmlScrap()
-
-            Display.Ban(title, versi, 1)
-
-            if self._dashboard_flow():
-                # cookie qayta so'raladi -> tashqi while True davom etadi
-                continue
-            break
-
-        self._menu_flow()
-
-    def _dashboard_flow(self):
-        """True qaytarsa cookie qayta so'ralishi kerak."""
-        retry = 0
-        cloudflare_flag = False
-        while True:
-            r = self.Dashboard()
-            if r.get("cloudflare"):
-                cloudflare_flag = True
-                print(Display.Error("Cloudflare detect\n"), end="")
-                Display.Line()
-                print(Display.Error(f"Bypass Cloudflare {retry}"), end="")
-                cf = self.cf.BypassCf(host)
-                self.cookie = cf["cookie"]
-                self.uagent = cf["user-agent"]
-                time.sleep(2)
-                print("\r                              \r", end="")
-                retry += 1
-                if retry > 3:
-                    Functions.removeConfig("cookie")
-                    Functions.removeConfig("user_agent")
-                    return True
-                continue
-
-            if cloudflare_flag:
-                print(Display.Sukses("Cloudflare bypassed"), end="")
-                Display.Line()
-
-            if not r.get("Login"):
-                Functions.removeConfig("cookie")
-                Functions.removeConfig("user_agent")
-                print(Display.Error("Cookie Expired\n"), end="")
-                Display.Line()
-                return True
-
-            Display.Cetak("Username", r["Username"])
-            Display.Cetak("Balance", r["Balance"])
-            Display.Cetak("Bal_Api", self.captcha.getBalance())
-            Display.Line()
-            return False
-
-    def _menu_flow(self):
-        while True:
-            r = Requests.get(host + "faucet.php", self.headers())
-            try:
-                bonus = r[1].split('<span id="free_spins">')[1].split("</span>")[0]
-            except IndexError:
-                bonus = ""
-
-            Display.Menu(1, f"Claim Bonus [{bonus}]")
-            Display.Menu(2, "Hourly Bonus [Unlimited]")
-            print(Display.Isi("Nomor"), end="")
-            pil = input()
-
-            Display.Line()
-            if pil == "1":
-                self.ClaimBonus()
-            if pil == "2":
-                if self.HourlyFaucet():
-                    Functions.removeConfig("cookie")
-                    Functions.removeConfig("user_agent")
-                    self._enter_cookie_flow()
-                    return
-            # goto menu (PHP dagi cheksiz sikl)
+        self.config = Functions._load_config()
+        self.cookie = self.config.get("cookie", "")
+        self.uagent = self.config.get("user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        self.captcha = Captcha()
+        self.scrap = HtmlScrap()
+        self.is_running = False
+        self.last_balance = "0"
+        self.last_api_balance = "0"
+        self.last_username = "Noma'lum"
+        self.start_time = time.time()
 
     def headers(self):
         return [
@@ -1020,40 +645,23 @@ class Bot:
         data["cloudflare"] = 1 if re.search(r"Just a moment\.\.\.", r) else 0
         data["Login"] = "" if re.search(r"login_button", r) else 1
 
-        matches = re.findall(r'<b id="(total_wagered|wagering_target)">([^<]+)</b>', r)
-        values = [v for _, v in matches]
-        data["Total Wagered"] = values[0] if len(values) > 0 else None
-        data["Wagering Target"] = values[1] if len(values) > 1 else None
-
-        try:
-            data["Level"] = (
-                r.split("Your level is  <b>")[1].split("</b>")[0]
-                + " "
-                + r.split('aria-valuemax="100">')[1].split("</div>")[0]
-            )
-        except IndexError:
-            data["Level"] = None
-            if os.environ.get("TRON_DEBUG"):
-                print("[DEBUG] 'Your level is  <b>' topilmadi\n", end="")
-
         try:
             data["Username"] = r.split("&username=")[1].split("&")[0].strip()
+            self.last_username = data["Username"]
         except IndexError:
-            data["Username"] = None
-            if os.environ.get("TRON_DEBUG"):
-                print("[DEBUG] '&username=' topilmadi\n", end="")
+            data["Username"] = self.last_username
 
         try:
             data["Balance"] = r.split('class="drop_down_header_text user_balance">')[1].split("<")[0]
+            self.last_balance = data["Balance"]
         except IndexError:
-            data["Balance"] = None
-            if os.environ.get("TRON_DEBUG"):
-                print("[DEBUG] 'drop_down_header_text user_balance' topilmadi\n", end="")
+            data["Balance"] = self.last_balance
 
-        if os.environ.get("TRON_DEBUG"):
-            with open("dashboard_debug.html", "w") as f:
-                f.write(r)
-            print("[DEBUG] to'liq HTML dashboard_debug.html ga yozildi\n", end="")
+        try:
+            self.last_api_balance = str(self.captcha.getBalance())
+            data["Bal_Api"] = self.last_api_balance
+        except Exception:
+            data["Bal_Api"] = "0"
 
         return data
 
@@ -1067,147 +675,419 @@ class Bot:
                 data[key_] = val_
         return data.get("csrf_cookie_name")
 
-    def _rata(self, s, x=0, y=0):
-        length = 6 if y else 12
-        if len(s) > 12:
-            s = s[:12]
-        lenstr = length - len(s)
-        if x:
-            return s + " " * lenstr
-        return s + " " * lenstr + b + "|"
+    def ClaimBonus(self):
+        r = Requests.get(host + "faucet.php", self.headers())
+        try:
+            bonus = r[1].split('<span id="free_spins">')[1].split("</span>")[0]
+        except IndexError:
+            bonus = None
 
-    def _roundUpToNextDecimal(self, number):
-        import math
-        return math.ceil(number * 10) / 10
+        if not bonus:
+            return {"success": False, "message": "Bonus mavjud emas!"}
+
+        set_cookie_matches = re.findall(r"^Set-Cookie:\s*([^;]*)", r[0], flags=re.MULTILINE | re.IGNORECASE)
+        cookies = {}
+        for item in set_cookie_matches:
+            if "=" in item:
+                key_, val_ = item.split("=", 1)
+                cookies[key_] = val_
+
+        # Captcha tekshirish
+        if recaptcha and re.search(recaptcha, r[1]):
+            cap = self.captcha.RecaptchaV2(recaptcha, host + "faucet.php")
+            if not cap:
+                return {"success": False, "message": "Captcha yechilmadi!"}
+            data = "action=claim_bonus_faucet&g-recaptcha-response=" + cap + "&h-captcha-response=null&captcha=&ft=&csrf_test_name=" + cookies.get("csrf_cookie_name", "")
+        else:
+            data = "action=claim_bonus_faucet&csrf_test_name=" + cookies.get("csrf_cookie_name", "")
+
+        r2 = safe_json_loads(Requests.post(host + "process.php", self.headers(), data)[1], "claim_bonus")
+        if r2 is None:
+            return {"success": False, "message": "Server javob bermadi!"}
+        
+        if r2.get("ret"):
+            self.Dashboard()
+            return {"success": True, "message": r2.get("mes", "Bonus yig'ildi!"), "num": r2.get("num", ""), "balance": self.last_balance}
+        else:
+            return {"success": False, "message": r2.get("mes", "Noma'lum xatolik!")}
 
     def HourlyFaucet(self):
-        retry = 0
-        cloudflare_flag = False
-        while True:
-            r = Requests.get(host + "faucet.php", self.headers())
-            cek = self.scrap.Result(r[1])
-            if cek.get("cloudflare"):
-                cloudflare_flag = True
-                print(Display.Error("Cloudflare Detect\n"), end="")
-                Display.Line()
-                print(Display.Error(f"Bypass Cloudflare {retry}"), end="")
-                cf = self.cf.BypassCf(host)
-                self.cookie = cf["cookie"]
-                self.uagent = cf["user-agent"]
-                time.sleep(2)
-                print("\r                              \r", end="")
-                retry += 1
-                if retry > 3:
-                    return 1
-                continue
+        r = Requests.get(host + "faucet.php", self.headers())
+        cek = self.scrap.Result(r[1])
+        
+        if cek.get("cloudflare"):
+            return {"success": False, "message": "Cloudflare detected!"}
 
-            if cloudflare_flag:
-                print(Display.Sukses("Cloudflare bypassed"), end="")
-                Display.Line()
-                cloudflare_flag = False
+        try:
+            tmr = r[1].split("select_hourly_faucet|")[1].split("|")[0]
+        except IndexError:
+            tmr = None
 
-            retry = 0
+        set_cookie_matches = re.findall(r"^Set-Cookie:\s*([^;]*)", r[0], flags=re.MULTILINE | re.IGNORECASE)
+        cookies = {}
+        for item in set_cookie_matches:
+            if "=" in item:
+                key_, val_ = item.split("=", 1)
+                cookies[key_] = val_
+
+        # Captcha tekshirish
+        if recaptcha and re.search(recaptcha, r[1]):
+            cap = self.captcha.RecaptchaV2(recaptcha, host + "faucet.php")
+            if not cap:
+                return {"success": False, "message": "Captcha yechilmadi!"}
+            data = "action=claim_hourly_faucet&g-recaptcha-response=" + cap + "&h-captcha-response=null&captcha=&ft=&csrf_test_name=" + cookies.get("csrf_cookie_name", "")
+        else:
+            data = "action=claim_hourly_faucet&csrf_test_name=" + cookies.get("csrf_cookie_name", "")
+
+        r2 = safe_json_loads(Requests.post(host + "process.php", self.headers(), data)[1], "hourly_faucet")
+        if r2 is None:
+            return {"success": False, "message": "Server javob bermadi!"}
+        
+        if r2.get("ret"):
+            self.Dashboard()
+            return {"success": True, "message": r2.get("mes", "Hourly bonus yig'ildi!"), "num": r2.get("num", ""), "balance": self.last_balance}
+        else:
+            return {"success": False, "message": r2.get("mes", "Noma'lum xatolik!")}
+
+    def get_status(self):
+        self.Dashboard()
+        uptime = int(time.time() - self.start_time)
+        hours = uptime // 3600
+        minutes = (uptime % 3600) // 60
+        seconds = uptime % 60
+        
+        return {
+            "status": "Ishlamoqda" if self.is_running else "To'xtatilgan",
+            "username": self.last_username,
+            "balance": self.last_balance,
+            "api_balance": self.last_api_balance,
+            "uptime": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
+            "version": versi
+        }
+
+# ==========================================================
+#                   TELEGRAM BOT MANAGER
+# ==========================================================
+
+class TronBotManager:
+    def __init__(self):
+        self.tron_bot = None
+        self.is_running = False
+        self.claim_thread = None
+        self.stop_claim = False
+
+    def init_bot(self):
+        try:
+            self.tron_bot = TronBot()
+            self.is_running = True
+            self.tron_bot.is_running = True
+            status = self.tron_bot.get_status()
+            return True, f"Bot muvaffaqiyatli ishga tushirildi!\n👤 {status['username']}\n💰 {status['balance']}"
+        except Exception as e:
+            logger.error(f"Bot ishga tushirishda xatolik: {e}")
+            return False, f"Xatolik: {str(e)}"
+
+    def get_status(self):
+        if self.tron_bot and self.is_running:
+            return self.tron_bot.get_status()
+        return {
+            "status": "To'xtatilgan",
+            "username": "Noma'lum",
+            "balance": "0",
+            "api_balance": "0",
+            "uptime": "00:00:00",
+            "version": versi
+        }
+
+    def claim_bonus(self):
+        if not self.tron_bot or not self.is_running:
+            return {"success": False, "message": "Bot ishlamayapti!"}
+        return self.tron_bot.ClaimBonus()
+
+    def claim_hourly(self):
+        if not self.tron_bot or not self.is_running:
+            return {"success": False, "message": "Bot ishlamayapti!"}
+        return self.tron_bot.HourlyFaucet()
+
+    def auto_claim_start(self):
+        if self.claim_thread and self.claim_thread.is_alive():
+            return {"success": False, "message": "Avtomatik yig'ish allaqachon ishlamoqda!"}
+        
+        self.stop_claim = False
+        self.claim_thread = threading.Thread(target=self._auto_claim_loop)
+        self.claim_thread.daemon = True
+        self.claim_thread.start()
+        return {"success": True, "message": "Avtomatik bonus yig'ish boshlandi!"}
+
+    def auto_claim_stop(self):
+        self.stop_claim = True
+        if self.claim_thread:
+            self.claim_thread.join(timeout=5)
+        return {"success": True, "message": "Avtomatik bonus yig'ish to'xtatildi!"}
+
+    def _auto_claim_loop(self):
+        while not self.stop_claim:
             try:
-                tmr = r[1].split("select_hourly_faucet|")[1].split("|")[0]
-            except IndexError:
-                tmr = None
+                self.claim_bonus()
+                time.sleep(30)
+                self.claim_hourly()
+                time.sleep(3600)
+            except Exception as e:
+                logger.error(f"Avtomatik yig'ishda xatolik: {e}")
+                time.sleep(60)
 
-            set_cookie_matches = re.findall(r"^Set-Cookie:\s*([^;]*)", r[0], flags=re.MULTILINE | re.IGNORECASE)
-            cookies = {}
-            for item in set_cookie_matches:
-                if "=" in item:
-                    key_, val_ = item.split("=", 1)
-                    cookies[key_] = val_
+    def set_config(self, key, value):
+        config = Functions._load_config()
+        config[key] = value
+        Functions._save_config(config)
+        
+        # TRON bot konfiguratsiyasini yangilash
+        if self.tron_bot:
+            if key == "cookie":
+                self.tron_bot.cookie = value
+            elif key == "user_agent":
+                self.tron_bot.uagent = value
+            elif key == "multibot_apikey" or key == "xevil_apikey":
+                self.tron_bot.captcha = Captcha()
+        
+        return {"success": True, "message": f"{key} o'zgartirildi!"}
 
-            recaptcha_ = recaptcha
-            turnstile_ = turnstile
-            hcaptcha_ = hcaptcha
+# ==========================================================
+#                   TELEGRAM BOT HANDLERLAR
+# ==========================================================
 
-            # Recaptcha V2 ishlatiladi (chunki turnstile bo'sh, recaptcha to'ldirilgan)
-            if recaptcha_ and re.search(recaptcha_, r[1]):
-                cap = self.captcha.RecaptchaV2(recaptcha_, host + "faucet.php")
-                if not cap:
-                    continue
-                data = (
-                    "action=claim_hourly_faucet&g-recaptcha-response="
-                    + cap
-                    + "&h-captcha-response=null&captcha=&ft=&csrf_test_name="
-                    + cookies.get("csrf_cookie_name", "")
-                )
-            elif turnstile_ and re.search(turnstile_, r[1]):
-                cap = (
-                    self.iewil.Turnstile(turnstile_, host + "faucet.php")
-                    if self.iewil
-                    else self.captcha.Turnstile(turnstile_, host + "faucet.php")
-                )
-                if not cap:
-                    continue
-                data = (
-                    "action=claim_hourly_faucet&clbt=1&g-recaptcha-response=null&captcha=&h-captcha-response=null&c_captcha_response="
-                    + cap
-                    + "&csrf_test_name="
-                    + cookies.get("csrf_cookie_name", "")
-                )
-            else:
-                print(Display.Error("Sitekey Error\n"), end="")
-                continue
+bot_manager = TronBotManager()
 
-            r2 = safe_json_loads(Requests.post(host + "process.php", self.headers(), data)[1], "hourly_faucet")
-            if r2 is None:
-                print(Display.Error(
-                    "Server javobini o'qib bo'lmadi (JSON emas). Xom javob "
-                    "'debug_hourly_faucet.txt' fayliga yozildi. Qayta urinilyapti...\n"
-                ), end="")
-                time.sleep(3)
-                continue
-            if r2.get("ret"):
-                Display.Cetak("Number", r2["num"])
-                print(Display.Sukses(r2["mes"]), end="")
-                Display.Cetak("Balance", self.Dashboard()["Balance"])
-                Display.Cetak("Bal_Api", self.captcha.getBalance())
-                Display.Line()
-            else:
-                if r2.get("mes"):
-                    print(Display.Error(r2["mes"] + "\n"), end="")
-                else:
-                    print(r2)
-                Display.Line()
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Sizga ruxsat berilmagan!")
+        return
+    
+    keyboard = [
+        [InlineKeyboardButton("🚀 Botni Ishga Tushirish", callback_data="start_bot")],
+        [InlineKeyboardButton("📊 Holat", callback_data="status")],
+        [InlineKeyboardButton("💰 Bonus Yig'ish", callback_data="claim_bonus")],
+        [InlineKeyboardButton("🕐 Hourly Bonus", callback_data="claim_hourly")],
+        [InlineKeyboardButton("🔄 Avtomatik Yig'ish", callback_data="auto_claim")],
+        [InlineKeyboardButton("⚙️ Sozlamalar", callback_data="settings")],
+        [InlineKeyboardButton("ℹ️ Ma'lumot", callback_data="info")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"🤖 **TRON BOT v{versi}**\n\nBotni boshqarish uchun tugmalardan foydalaning:",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
 
-            Functions.Tmr(3600)
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await query.edit_message_text("❌ Sizga ruxsat berilmagan!")
+        return
+    
+    data = query.data
+    
+    if data == "start_bot":
+        success, message = bot_manager.init_bot()
+        await query.edit_message_text(
+            f"{'✅' if success else '❌'} {message}",
+            reply_markup=await get_main_keyboard()
+        )
+    
+    elif data == "status":
+        status = bot_manager.get_status()
+        text = (
+            f"📊 **Bot Holati**\n\n"
+            f"🔹 Holat: {status['status']}\n"
+            f"👤 Username: {status['username']}\n"
+            f"💰 Balance: {status['balance']}\n"
+            f"💳 API Balance: {status['api_balance']}\n"
+            f"⏱️ Ish vaqti: {status['uptime']}\n"
+            f"📦 Versiya: {status['version']}"
+        )
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=await get_main_keyboard())
+    
+    elif data == "claim_bonus":
+        await query.edit_message_text("⏳ Bonus yig'ilmoqda...", reply_markup=await get_main_keyboard())
+        result = bot_manager.claim_bonus()
+        if result['success']:
+            text = f"✅ {result['message']}\n💰 Balance: {result.get('balance', 'Noma'lum')}"
+            if result.get('num'):
+                text += f"\n🎰 Number: {result['num']}"
+        else:
+            text = f"❌ {result['message']}"
+        await query.edit_message_text(text, reply_markup=await get_main_keyboard())
+    
+    elif data == "claim_hourly":
+        await query.edit_message_text("⏳ Hourly bonus yig'ilmoqda...", reply_markup=await get_main_keyboard())
+        result = bot_manager.claim_hourly()
+        if result['success']:
+            text = f"✅ {result['message']}\n💰 Balance: {result.get('balance', 'Noma'lum')}"
+        else:
+            text = f"❌ {result['message']}"
+        await query.edit_message_text(text, reply_markup=await get_main_keyboard())
+    
+    elif data == "auto_claim":
+        keyboard = [
+            [InlineKeyboardButton("▶️ Boshlash", callback_data="auto_start")],
+            [InlineKeyboardButton("⏹️ To'xtatish", callback_data="auto_stop")],
+            [InlineKeyboardButton("🔙 Orqaga", callback_data="back")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "🔄 **Avtomatik Bonus Yig'ish**\n\nAvtomatik rejimda bot har 30 soniyada bonus va har soatda hourly bonus yig'adi.",
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+    
+    elif data == "auto_start":
+        result = bot_manager.auto_claim_start()
+        await query.edit_message_text(
+            f"{'✅' if result['success'] else '❌'} {result['message']}",
+            reply_markup=await get_main_keyboard()
+        )
+    
+    elif data == "auto_stop":
+        result = bot_manager.auto_claim_stop()
+        await query.edit_message_text(
+            f"{'✅' if result['success'] else '❌'} {result['message']}",
+            reply_markup=await get_main_keyboard()
+        )
+    
+    elif data == "settings":
+        keyboard = [
+            [InlineKeyboardButton("🍪 Cookie Sozlash", callback_data="set_cookie")],
+            [InlineKeyboardButton("🔄 User-Agent Sozlash", callback_data="set_useragent")],
+            [InlineKeyboardButton("🔑 Multibot API Key", callback_data="set_multibot")],
+            [InlineKeyboardButton("🔑 Xevil API Key", callback_data="set_xevil")],
+            [InlineKeyboardButton("🔙 Orqaga", callback_data="back")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "⚙️ **Sozlamalar**\n\nSozlamani tanlang:",
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+    
+    elif data in ["set_cookie", "set_useragent", "set_multibot", "set_xevil"]:
+        context.user_data['setting'] = data.replace("set_", "")
+        names = {
+            "cookie": "🍪 Cookie",
+            "useragent": "🔄 User-Agent",
+            "multibot": "🔑 Multibot API Key",
+            "xevil": "🔑 Xevil API Key"
+        }
+        await query.edit_message_text(
+            f"{names.get(context.user_data['setting'], 'Sozlama')}\n\nIltimos, yangi qiymatni kiriting:",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back")]])
+        )
+    
+    elif data == "info":
+        text = (
+            f"ℹ️ **TRON BOT v{versi}**\n\n"
+            "Bot TRON saytida avtomatik ravishda bonus yig'ish uchun mo'ljallangan.\n\n"
+            "📌 **Xususiyatlar:**\n"
+            "• Bonus yig'ish\n"
+            "• Hourly bonus yig'ish\n"
+            "• Avtomatik rejim\n"
+            "• Balans kuzatish\n"
+            "• Cookie boshqarish\n\n"
+            "🔗 Sayt: https://tronpick.io/"
+        )
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=await get_main_keyboard())
+    
+    elif data == "back":
+        await query.edit_message_text(
+            "🏠 **Asosiy menyu**",
+            parse_mode='Markdown',
+            reply_markup=await get_main_keyboard()
+        )
 
-    def ClaimBonus(self):
-        while True:
-            r = Requests.get(host + "faucet.php", self.headers())
-            try:
-                bonus = r[1].split('<span id="free_spins">')[1].split("</span>")[0]
-            except IndexError:
-                bonus = None
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Sizga ruxsat berilmagan!")
+        return
+    
+    text = update.message.text
+    
+    if context.user_data.get('setting'):
+        setting = context.user_data['setting']
+        result = bot_manager.set_config(setting, text)
+        await update.message.reply_text(
+            f"{'✅' if result['success'] else '❌'} {result['message']}"
+        )
+        context.user_data['setting'] = None
+        await update.message.reply_text(
+            "🏠 Asosiy menyu",
+            reply_markup=await get_main_keyboard()
+        )
+    else:
+        await update.message.reply_text(
+            "❓ Tushunarsiz buyruq. /start ni bosing.",
+            reply_markup=await get_main_keyboard()
+        )
 
-            if not bonus:
-                print(Display.Error("No Bonus\n"), end="")
-                break
+async def get_main_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("🚀 Botni Ishga Tushirish", callback_data="start_bot")],
+        [InlineKeyboardButton("📊 Holat", callback_data="status")],
+        [InlineKeyboardButton("💰 Bonus Yig'ish", callback_data="claim_bonus")],
+        [InlineKeyboardButton("🕐 Hourly Bonus", callback_data="claim_hourly")],
+        [InlineKeyboardButton("🔄 Avtomatik Yig'ish", callback_data="auto_claim")],
+        [InlineKeyboardButton("⚙️ Sozlamalar", callback_data="settings")],
+        [InlineKeyboardButton("ℹ️ Ma'lumot", callback_data="info")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
-            set_cookie_matches = re.findall(r"^Set-Cookie:\s*([^;]*)", r[0], flags=re.MULTILINE | re.IGNORECASE)
-            cookies = {}
-            for item in set_cookie_matches:
-                if "=" in item:
-                    key_, val_ = item.split("=", 1)
-                    cookies[key_] = val_
+# ==========================================================
+#                   ASOSIY FUNKSIYA
+# ==========================================================
 
-            data = "action=claim_bonus_faucet&csrf_test_name=" + cookies.get("csrf_cookie_name", "")
-            r2 = safe_json_loads(Requests.post(host + "process.php", self.headers(), data)[1], "claim_bonus")
-            if r2 is None:
-                print(Display.Error(
-                    "Server javobini o'qib bo'lmadi (JSON emas). Xom javob "
-                    "'debug_claim_bonus.txt' fayliga yozildi.\n"
-                ), end="")
-                break
-            if r2.get("ret"):
-                Display.Cetak("Number", r2["num"])
-                print(Display.Sukses(r2["mes"]), end="")
-                Display.Cetak("Balance", self.Dashboard()["Balance"])
-                Display.Line()
-
+def main():
+    print(f"\n{'='*50}")
+    print(f"🤖 TRON Telegram Bot v{versi}")
+    print(f"{'='*50}\n")
+    
+    # Environment variables tekshirish
+    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+        print("❌ XATOLIK: BOT_TOKEN environment variable ni o'rnating!")
+        print("   Railwayda: Environment Variables → BOT_TOKEN")
+        print("   Yoki bot.py da BOT_TOKEN ni o'zgartiring")
+        sys.exit(1)
+    
+    if ADMIN_ID == 123456789:
+        print("❌ XATOLIK: ADMIN_ID environment variable ni o'rnating!")
+        print("   Railwayda: Environment Variables → ADMIN_ID")
+        print("   Yoki bot.py da ADMIN_ID ni o'zgartiring")
+        sys.exit(1)
+    
+    print(f"✅ Bot ishga tushmoqda...")
+    print(f"   Admin ID: {ADMIN_ID}")
+    print(f"   Token: {BOT_TOKEN[:15]}...")
+    print("\n🔄 Botni to'xtatish uchun Ctrl+C bosing\n")
+    
+    # Bot yaratish
+    application = Application.builder().token(BOT_TOKEN).build()
+    
+    # Handlerlar
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    # Botni ishga tushirish
+    try:
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except KeyboardInterrupt:
+        print("\n👋 Bot to'xtatildi.")
+    except Exception as e:
+        print(f"❌ Xatolik: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    Bot()
+    main()
