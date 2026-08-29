@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TRON Telegram Bot - Oddiy matnli interfeys
+TRON Telegram Bot - Hamma ma'lumot Telegram orqali so'raladi
+Terminalda hech narsa so'ramaydi!
 """
 
 import os
@@ -9,23 +10,34 @@ import re
 import sys
 import time
 import json
-import threading
+import base64
 import subprocess
 import tempfile
-import logging
-from urllib.parse import urlencode, urlparse
+import threading
+from urllib.parse import urlencode, urlparse, quote_plus
 
 import requests as _http
 import urllib3
 
+# Telegram bot
 try:
     from telegram import Update
     from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 except ImportError:
-    print("pip install python-telegram-bot --upgrade")
+    print("Iltimos, telegram kutubxonasini o'rnating: pip install python-telegram-bot --upgrade")
     sys.exit(1)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# ==========================================================
+#                    TELEGRAM KONFIGURATSIYA
+# ==========================================================
+
+# O'ZGARTIRING! @BotFather dan olingan token
+BOT_TOKEN = "8856631856:AAE3fSYI4zfF3KP0EpugrzvYv9u7NXbsfgI"
+
+# O'ZGARTIRING! @userinfobot dan olingan ID
+ADMIN_ID = 8758410535
 
 # ==========================================================
 #                       KONSTANTALAR
@@ -34,12 +46,16 @@ title = "TRON"
 versi = "1.0.8"
 class_require = "1.1.7"
 host = "https://tronpick.io/"
+youtube = ""
+
 turnstile = ""
 recaptcha = "6LeBFBclAAAAANoZIrwXU1cPgYDDM7f1ehHpzXWj"
 hcaptcha = ""
+
 MAXWIN_DICE = 1000
 class_version = "1.1.7"
 
+# Warna teks
 n = "\n"
 d = "\033[0m"
 m = "\033[1;31m"
@@ -53,22 +69,8 @@ o = "\033[38;5;214m"
 o2 = "\033[01;38;5;208m"
 
 # ==========================================================
-#                    TELEGRAM KONFIGURATSIYA
+#                    Yordamchi funksiya
 # ==========================================================
-
-ADMIN_ID = int(os.environ.get("ADMIN_ID", 8758410535))
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8856631856:AAE3fSYI4zfF3KP0EpugrzvYv9u7NXbsfgI")
-
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# ==========================================================
-#                    YORDAMCHI FUNKSIYALAR
-# ==========================================================
-
 def safe_json_loads(s, debug_tag="response"):
     if s is None:
         return None
@@ -86,9 +88,8 @@ def safe_json_loads(s, debug_tag="response"):
         return None
 
 # ==========================================================
-#                        REQUESTS
+#                        Requests
 # ==========================================================
-
 class Requests:
     @staticmethod
     def Curl(url, header=0, post=0, data_post=0, cookie=0, proxy=0, skip=0):
@@ -174,9 +175,8 @@ class Requests:
         return Requests.Curl(url, head, 1, data_post)
 
 # ==========================================================
-#                        FUNCTIONS
+#                        Functions
 # ==========================================================
-
 class Functions:
     configFile = "tronpick_config.json"
 
@@ -211,10 +211,16 @@ class Functions:
         config = Functions._load_config()
         return config.get(key)
 
-# ==========================================================
-#                        HTMLSCRAP
-# ==========================================================
+    @staticmethod
+    def removeConfig(key):
+        config = Functions._load_config()
+        if key in config:
+            del config[key]
+            Functions._save_config(config)
 
+# ==========================================================
+#                        HtmlScrap
+# ==========================================================
 class HtmlScrap:
     def __init__(self):
         self.captcha_re = r'class=["\']([^"\']+)["\'][^>]*data-sitekey=["\']([^"\']+)["\']'
@@ -269,12 +275,16 @@ class HtmlScrap:
         else:
             warning_parts = html.split("html: '")
             warning = warning_parts[1].split("'")[0] if len(warning_parts) > 1 else None
-            ban_parts = html.split('<div class="alert text-center alert-danger"><i class="fas fa-exclamation-circle"></i> Your account')
+
+            ban_parts = html.split(
+                '<div class="alert text-center alert-danger"><i class="fas fa-exclamation-circle"></i> Your account'
+            )
             ban = ban_parts[1].split("</div>")[0] if len(ban_parts) > 1 else None
 
             invalid = "You are sending an invalid amount" if re.search(r"invalid amount", html) else False
             shortlink = warning if re.search(r"Shortlink in order to claim from the faucet!", html) else False
             sufficient = "Sufficient funds" if re.search(r"sufficient funds", html) else False
+            daily = "Daily claim limit" if re.search(r"Daily claim limit", html) else False
 
             response["unset"] = False
             response["exit"] = False
@@ -300,20 +310,21 @@ class HtmlScrap:
         return data
 
 # ==========================================================
-#                         CAPTCHA
+#                         Captcha
 # ==========================================================
-
 class Captcha:
     def __init__(self):
-        self.config = Functions._load_config()
-        self.provider = self.config.get("provider", "Multibot")
+        config = Functions._load_config()
+        captcha_type = config.get("type", "1")
         
-        if self.provider == "Multibot":
+        if captcha_type == "1":
             self.url = "http://api.multibot.in/"
-            self.key = self.config.get("multibot_apikey", "")
+            self.key = config.get("multibot_apikey", "")
+            self.provider = "Multibot"
         else:
             self.url = "https://sctg.xyz/"
-            self.key = self.config.get("xevil_apikey", "")
+            self.key = config.get("xevil_apikey", "") + "|SOFTID1204538927"
+            self.provider = "Xevil"
 
     def _in_api(self, content, method, header=0):
         param = f"key={self.key}&json=1&{content}"
@@ -322,7 +333,10 @@ class Captcha:
                 return json.loads(_http.get(self.url + "in.php?" + param, timeout=30).text)
             except Exception:
                 return None
-        return _http.post(self.url + "in.php", data=param, timeout=30).text
+        headers = {}
+        if header:
+            headers["Content-Type"] = header if isinstance(header, str) else "application/x-www-form-urlencoded"
+        return _http.post(self.url + "in.php", data=param, headers=headers, timeout=30).text
 
     def _res_api(self, api_id):
         params = f"?key={self.key}&action=get&id={api_id}&json=1"
@@ -331,13 +345,13 @@ class Captcha:
         except Exception:
             return {}
 
-    def _getResult(self, data, method):
+    def _getResult(self, data, method, header=0):
         try:
             cap = data.split("method=")[1].split("&")[0]
         except:
             cap = "captcha"
             
-        get_res = self._in_api(data, method)
+        get_res = self._in_api(data, method, header)
         try:
             get_in = json.loads(get_res) if isinstance(get_res, str) else get_res
         except:
@@ -361,14 +375,6 @@ class Captcha:
                 return get_res.get("request", 0)
             return 0
 
-    def _filter(self, method):
-        mapping = {
-            "userrecaptcha": "RecaptchaV2",
-            "hcaptcha": "Hcaptcha",
-            "turnstile": "Turnstile",
-        }
-        return mapping.get(method)
-
     def getBalance(self):
         try:
             res = json.loads(
@@ -383,14 +389,13 @@ class Captcha:
         return self._getResult(data, "GET")
 
 # ==========================================================
-#                            BOT
+#                            Bot
 # ==========================================================
-
 class TronBot:
     def __init__(self):
-        self.config = Functions._load_config()
-        self.cookie = self.config.get("cookie", "")
-        self.uagent = self.config.get("user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        config = Functions._load_config()
+        self.cookie = config.get("cookie", "")
+        self.uagent = config.get("user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         self.captcha = Captcha()
         self.scrap = HtmlScrap()
         self.last_balance = "0"
@@ -500,9 +505,11 @@ tron_bot = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Sizga ruxsat berilmagan!")
+        return
     
-    global tron_bot, user_data
-    tron_bot = TronBot()
+    global user_data
     user_data[user_id] = {"step": "cookie"}
     
     await update.message.reply_text(
@@ -513,6 +520,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global tron_bot, user_data
     user_id = update.effective_user.id
+    
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Sizga ruxsat berilmagan!")
+        return
+    
     text = update.message.text.strip()
     
     if user_id not in user_data:
@@ -523,7 +535,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if step == "cookie":
         Functions.setConfig("cookie", text)
-        tron_bot.cookie = text
         user_data[user_id]["step"] = "user_agent"
         await update.message.reply_text(
             "✅ Cookie saqlandi!\n\n"
@@ -532,26 +543,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif step == "user_agent":
         Functions.setConfig("user_agent", text)
-        tron_bot.uagent = text
         user_data[user_id]["step"] = "captcha_type"
         await update.message.reply_text(
             "✅ User-Agent saqlandi!\n\n"
             "🔑 Captcha xizmatini tanlang:\n"
             "1 - Multibot\n"
-            "2 - Xevil\n\n"
-            "Raqam yuboring:"
+            "2 - Xevil"
         )
     
     elif step == "captcha_type":
         if text == "1":
-            Functions.setConfig("provider", "Multibot")
+            Functions.setConfig("type", "1")
             user_data[user_id]["step"] = "multibot_key"
             await update.message.reply_text(
                 "✅ Multibot tanlandi!\n\n"
                 "🔑 Multibot API Key yuboring:"
             )
         elif text == "2":
-            Functions.setConfig("provider", "Xevil")
+            Functions.setConfig("type", "2")
             user_data[user_id]["step"] = "xevil_key"
             await update.message.reply_text(
                 "✅ Xevil tanlandi!\n\n"
@@ -562,16 +571,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif step == "multibot_key":
         Functions.setConfig("multibot_apikey", text)
-        tron_bot.captcha = Captcha()
+        # Darhol bot yaratish va menyuni chiqarish
+        tron_bot = TronBot()
         user_data[user_id]["step"] = "done"
         await update.message.reply_text("✅ API Key saqlandi!")
+        # Darhol menyuni chiqarish
         await show_menu(update)
     
     elif step == "xevil_key":
         Functions.setConfig("xevil_apikey", text)
-        tron_bot.captcha = Captcha()
+        # Darhol bot yaratish va menyuni chiqarish
+        tron_bot = TronBot()
         user_data[user_id]["step"] = "done"
         await update.message.reply_text("✅ API Key saqlandi!")
+        # Darhol menyuni chiqarish
         await show_menu(update)
     
     elif step == "done":
@@ -579,10 +592,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⏳ Bonus yig'ilmoqda...")
             result = tron_bot.ClaimBonus()
             if result['success']:
-                msg = f"✅ {result['message']}"
+                msg = f"✅ {result['message']}\n💰 Balance: {result['balance']}"
                 if result.get('num'):
                     msg += f"\n🎰 Number: {result['num']}"
-                msg += f"\n💰 Balance: {result.get('balance', '0')}"
             else:
                 msg = f"❌ {result['message']}"
             await update.message.reply_text(msg)
@@ -592,15 +604,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⏳ Hourly bonus yig'ilmoqda...")
             result = tron_bot.HourlyFaucet()
             if result['success']:
-                msg = f"✅ {result['message']}"
-                if result.get('num'):
-                    msg += f"\n🎰 Number: {result['num']}"
-                msg += f"\n💰 Balance: {result.get('balance', '0')}"
-                try:
-                    api_balance = tron_bot.captcha.getBalance()
-                    msg += f"\n💳 API Balance: {api_balance}"
-                except:
-                    pass
+                msg = f"✅ {result['message']}\n💰 Balance: {result['balance']}"
             else:
                 msg = f"❌ {result['message']}"
             await update.message.reply_text(msg)
@@ -608,7 +612,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         else:
             await update.message.reply_text("❌ 1 yoki 2 yuboring!")
-            await show_menu(update)
 
 async def show_menu(update):
     try:
@@ -616,7 +619,7 @@ async def show_menu(update):
         username = dashboard.get("Username", "Noma'lum")
         balance = dashboard.get("Balance", "0")
         api_balance = tron_bot.captcha.getBalance()
-    except:
+    except Exception as e:
         username = "Noma'lum"
         balance = "0"
         api_balance = "0"
@@ -628,8 +631,7 @@ async def show_menu(update):
         f"💳 API Balance: {api_balance}\n\n"
         f"📌 **Menyu:**\n"
         f"1 - Bonus yig'ish\n"
-        f"2 - Hourly bonus\n\n"
-        f"Raqam yuboring:",
+        f"2 - Hourly bonus",
         parse_mode='Markdown'
     )
 
@@ -641,26 +643,20 @@ def main():
     print(f"\n{'='*50}")
     print(f"🤖 TRON Telegram Bot v{versi}")
     print(f"{'='*50}\n")
-    
-    if not BOT_TOKEN:
-        print("❌ XATOLIK: BOT_TOKEN o'rnatilmagan!")
-        sys.exit(1)
-    
-    print(f"✅ Bot ishga tushmoqda...")
-    print(f"   Token: {BOT_TOKEN[:20]}...")
+    print("✅ Telegram orqali boshqariladi!")
+    print("📱 Botga /start yozing")
     print("\n🔄 Botni to'xtatish uchun Ctrl+C bosing\n")
     
-    application = Application.builder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     try:
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
     except KeyboardInterrupt:
         print("\n👋 Bot to'xtatildi.")
     except Exception as e:
         print(f"❌ Xatolik: {e}")
-        sys.exit(1)
 
 if __name__ == "__main__":
     main()
