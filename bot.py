@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 TRON Telegram Bot - Oddiy matnli interfeys
-tron.py va bot.py birlashtirilgan
 """
 
 import os
@@ -19,12 +18,11 @@ from urllib.parse import urlencode, urlparse
 import requests as _http
 import urllib3
 
-# Telegram bot
 try:
     from telegram import Update
     from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 except ImportError:
-    print("Iltimos, telegram kutubxonasini o'rnating: pip install python-telegram-bot --upgrade")
+    print("pip install python-telegram-bot --upgrade")
     sys.exit(1)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -42,7 +40,6 @@ hcaptcha = ""
 MAXWIN_DICE = 1000
 class_version = "1.1.7"
 
-# Warna teks
 n = "\n"
 d = "\033[0m"
 m = "\033[1;31m"
@@ -59,8 +56,8 @@ o2 = "\033[01;38;5;208m"
 #                    TELEGRAM KONFIGURATSIYA
 # ==========================================================
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8856631856:AAE3fSYI4zfF3KP0EpugrzvYv9u7NXbsfgI")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 8758410535))
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8856631856:AAE3fSYI4zfF3KP0EpugrzvYv9u7NXbsfgI")
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -316,7 +313,7 @@ class Captcha:
             self.key = self.config.get("multibot_apikey", "")
         else:
             self.url = "https://sctg.xyz/"
-            self.key = self.config.get("xevil_apikey", "") + "|SOFTID1204538927"
+            self.key = self.config.get("xevil_apikey", "")
 
     def _in_api(self, content, method, header=0):
         param = f"key={self.key}&json=1&{content}"
@@ -335,23 +332,33 @@ class Captcha:
             return {}
 
     def _getResult(self, data, method):
-        cap = self._filter(data.split("method=")[1].split("&")[0])
+        try:
+            cap = data.split("method=")[1].split("&")[0]
+        except:
+            cap = "captcha"
+            
         get_res = self._in_api(data, method)
-        get_in = get_res if isinstance(get_res, dict) else json.loads(get_res or "{}")
+        try:
+            get_in = json.loads(get_res) if isinstance(get_res, str) else get_res
+        except:
+            return 0
 
-        if not get_in.get("status"):
+        if not get_in or not get_in.get("status"):
             return 0
 
         a = 0
         while True:
-            get_res = self._res_api(get_in["request"])
+            get_res = self._res_api(get_in.get("request", 0))
+            if not get_res:
+                return 0
             if get_res.get("request") == "CAPCHA_NOT_READY":
                 a += 10
+                time.sleep(1)
                 if a > 99:
-                    a = 99
+                    return 0
                 continue
             if get_res.get("status"):
-                return get_res["request"]
+                return get_res.get("request", 0)
             return 0
 
     def _filter(self, method):
@@ -493,9 +500,6 @@ tron_bot = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Sizga ruxsat berilmagan!")
-        return
     
     global tron_bot, user_data
     tron_bot = TronBot()
@@ -507,12 +511,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Sizga ruxsat berilmagan!")
-        return
-    
     global tron_bot, user_data
+    user_id = update.effective_user.id
     text = update.message.text.strip()
     
     if user_id not in user_data:
@@ -527,8 +527,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[user_id]["step"] = "user_agent"
         await update.message.reply_text(
             "✅ Cookie saqlandi!\n\n"
-            "📝 User-Agent yuboring:\n"
-            "(Mozilla/5.0 Windows uchun)"
+            "📝 User-Agent yuboring:"
         )
     
     elif step == "user_agent":
@@ -549,16 +548,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_data[user_id]["step"] = "multibot_key"
             await update.message.reply_text(
                 "✅ Multibot tanlandi!\n\n"
-                "🔑 Multibot API Key yuboring:\n"
-                "(https://multibot.in dan oling)"
+                "🔑 Multibot API Key yuboring:"
             )
         elif text == "2":
             Functions.setConfig("provider", "Xevil")
             user_data[user_id]["step"] = "xevil_key"
             await update.message.reply_text(
                 "✅ Xevil tanlandi!\n\n"
-                "🔑 Xevil API Key yuboring:\n"
-                "(https://t.me/Xevil_check_bot dan oling)"
+                "🔑 Xevil API Key yuboring:"
             )
         else:
             await update.message.reply_text("❌ 1 yoki 2 yuboring!")
@@ -567,12 +564,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         Functions.setConfig("multibot_apikey", text)
         tron_bot.captcha = Captcha()
         user_data[user_id]["step"] = "done"
+        await update.message.reply_text("✅ API Key saqlandi!")
         await show_menu(update)
     
     elif step == "xevil_key":
         Functions.setConfig("xevil_apikey", text)
         tron_bot.captcha = Captcha()
         user_data[user_id]["step"] = "done"
+        await update.message.reply_text("✅ API Key saqlandi!")
         await show_menu(update)
     
     elif step == "done":
@@ -580,9 +579,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⏳ Bonus yig'ilmoqda...")
             result = tron_bot.ClaimBonus()
             if result['success']:
-                msg = f"✅ {result['message']}\n💰 Balance: {result['balance']}"
+                msg = f"✅ {result['message']}"
                 if result.get('num'):
                     msg += f"\n🎰 Number: {result['num']}"
+                msg += f"\n💰 Balance: {result.get('balance', '0')}"
             else:
                 msg = f"❌ {result['message']}"
             await update.message.reply_text(msg)
@@ -592,7 +592,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⏳ Hourly bonus yig'ilmoqda...")
             result = tron_bot.HourlyFaucet()
             if result['success']:
-                msg = f"✅ {result['message']}\n💰 Balance: {result['balance']}"
+                msg = f"✅ {result['message']}"
+                if result.get('num'):
+                    msg += f"\n🎰 Number: {result['num']}"
+                msg += f"\n💰 Balance: {result.get('balance', '0')}"
+                try:
+                    api_balance = tron_bot.captcha.getBalance()
+                    msg += f"\n💳 API Balance: {api_balance}"
+                except:
+                    pass
             else:
                 msg = f"❌ {result['message']}"
             await update.message.reply_text(msg)
@@ -603,7 +611,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_menu(update)
 
 async def show_menu(update):
-    # Dashboard ma'lumotlarini olish
     try:
         dashboard = tron_bot.Dashboard()
         username = dashboard.get("Username", "Noma'lum")
@@ -635,16 +642,12 @@ def main():
     print(f"🤖 TRON Telegram Bot v{versi}")
     print(f"{'='*50}\n")
     
-    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
-        print("❌ XATOLIK: BOT_TOKEN ni o'rnating!")
-        sys.exit(1)
-    
-    if ADMIN_ID == 123456789:
-        print("❌ XATOLIK: ADMIN_ID ni o'rnating!")
+    if not BOT_TOKEN:
+        print("❌ XATOLIK: BOT_TOKEN o'rnatilmagan!")
         sys.exit(1)
     
     print(f"✅ Bot ishga tushmoqda...")
-    print(f"   Admin ID: {ADMIN_ID}")
+    print(f"   Token: {BOT_TOKEN[:20]}...")
     print("\n🔄 Botni to'xtatish uchun Ctrl+C bosing\n")
     
     application = Application.builder().token(BOT_TOKEN).build()
