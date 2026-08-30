@@ -7,7 +7,7 @@ import telebot
 # === SOZLAMALAR ===
 # Shu ikki qatorni o'zingnikiga almashtir:
 BOT_TOKEN = "8245157509:AAGeQpYiyS-VWLRnJmI655TR6IDhkyFJpv8"        # masalan: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-ADMIN_IDS = []                                  # masalan: [123456789] — o'z Telegram ID'ing
+ADMIN_IDS = [7907570895]                                  # masalan: [123456789] — o'z Telegram ID'ing
 
 BOTS_DIR = "bots"
 LOGS_DIR = "logs"
