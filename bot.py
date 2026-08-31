@@ -228,11 +228,36 @@ def send_input(message):
     """Ishlab turgan botning stdin'iga matn yuboradi (masalan input() kutayotganda)."""
     if not is_admin(message):
         return
-    parts = message.text.split(maxsplit=2)
-    if len(parts) < 3:
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
         bot.reply_to(message, "Foydalanish: /send <bot_nomi> <matn>")
         return
-    name, text = parts[1], parts[2]
+    rest = parts[1]  # "<bot_nomi> <matn>" — nomda ham bo'sh joy bo'lishi mumkin
+
+    # Ishlab turgan botlar orasidan REST matnga mos keladigan eng uzun nomni
+    # qidiramiz — shu orqali nomida bo'sh joy bo'lgan fayllar ham to'g'ri ishlaydi
+    # (masalan "bot (2)").
+    running_names = sorted(processes.keys(), key=len, reverse=True)
+    name = None
+    text = None
+    for n in running_names:
+        if rest == n or rest.startswith(n + " "):
+            name = n
+            text = rest[len(n):].strip()
+            break
+
+    if name is None:
+        bot.reply_to(
+            message,
+            "Bunday nomli ishlab turgan bot topilmadi. /status bilan aniq nomini tekshir.\n"
+            "Eslatma: bot fayl nomida bo'sh joy bo'lsa (masalan 'bot (2).py'), "
+            "nomni bo'sh joysiz qilib qayta nomlashni tavsiya qilaman.",
+        )
+        return
+    if not text:
+        bot.reply_to(message, "Foydalanish: /send <bot_nomi> <matn>")
+        return
+
     proc = processes.get(name)
     if not proc or proc.poll() is not None:
         bot.reply_to(message, f"'{name}' hozir ishlamayapti.")
