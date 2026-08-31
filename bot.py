@@ -1,6 +1,8 @@
 import os
+import pty
 import signal
 import subprocess
+import threading
 
 import telebot
 
@@ -22,13 +24,31 @@ RUNTIMES = {
     ".js": ["node"],
 }
 
-processes = {}  # bot_nomi -> subprocess.Popen
+processes = {}   # bot_nomi -> subprocess.Popen
+master_fds = {}  # bot_nomi -> PTY master fayl deskriptori (matn yuborish uchun)
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
 
 def is_admin(message) -> bool:
     return message.from_user.id in ADMIN_IDS
+
+
+def stream_output_to_log(master_fd: int, log_path: str):
+    """PTY'dan chiqadigan hamma narsani (chin terminaldagidek) log fayliga yozadi."""
+    def reader():
+        with open(log_path, "ab") as log_file:
+            while True:
+                try:
+                    data = os.read(master_fd, 4096)
+                except OSError:
+                    break
+                if not data:
+                    break
+                log_file.write(data)
+                log_file.flush()
+    t = threading.Thread(target=reader, daemon=True)
+    t.start()
 
 
 def find_bot_file(name: str):
@@ -137,29 +157,42 @@ def run_bot(message):
 
     interpreter = RUNTIMES[ext]
     log_path = os.path.join(LOGS_DIR, f"{name}.log")
-    log_file = open(log_path, "a")
 
     bot.reply_to(message, f"⏳ '{name}' tayyorlanmoqda (kerak bo'lsa kutubxonalar o'rnatilmoqda)...")
-    install_requirements(name, ext, log_file)
+    with open(log_path, "a") as setup_log:
+        install_requirements(name, ext, setup_log)
+
+    # Haqiqiy pseudo-terminal (PTY) ochamiz — shu orqali skript xuddi chinakam
+    # terminalda ishlayotgandek his qiladi (TERM o'rnatilgan, getpass/parol
+    # kiritish, rich progress-bar kabi narsalar ham to'g'ri ishlaydi).
+    master_fd, slave_fd = pty.openpty()
+    env = os.environ.copy()
+    env["TERM"] = "xterm-256color"
 
     try:
         proc = subprocess.Popen(
             interpreter + [path],
-            stdin=subprocess.PIPE,     # /send buyrug'i uchun kerak
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-            text=True,
-            bufsize=1,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            env=env,
+            preexec_fn=os.setsid,
+            close_fds=True,
         )
     except FileNotFoundError:
+        os.close(master_fd)
+        os.close(slave_fd)
         bot.reply_to(
             message,
             f"'{interpreter[0]}' interpretatori serverda o'rnatilmagan. "
             f"README'dagi 'Ko'p tilni qo'llab-quvvatlash' bo'limiga qara.",
         )
         return
+
+    os.close(slave_fd)  # bola jarayon o'z nusxasini oldi, ota-jarayonga kerak emas
     processes[name] = proc
+    master_fds[name] = master_fd
+    stream_output_to_log(master_fd, log_path)
     bot.reply_to(message, f"✅ '{name}' ({ext}) ishga tushdi (PID {proc.pid}).")
 
 
@@ -177,6 +210,12 @@ def stop_bot(message):
         bot.reply_to(message, f"'{name}' hozir ishlamayapti.")
         return
     os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    fd = master_fds.pop(name, None)
+    if fd is not None:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
     bot.reply_to(message, f"🛑 '{name}' to'xtatildi.")
 
 
@@ -262,14 +301,14 @@ def send_input(message):
     if not proc or proc.poll() is not None:
         bot.reply_to(message, f"'{name}' hozir ishlamayapti.")
         return
-    if not proc.stdin:
+    fd = master_fds.get(name)
+    if fd is None:
         bot.reply_to(message, f"'{name}' matn qabul qila olmaydi.")
         return
     try:
-        proc.stdin.write(text + "\n")
-        proc.stdin.flush()
+        os.write(fd, (text + "\n").encode())
         bot.reply_to(message, f"📨 '{name}' ga yuborildi: {text}")
-    except Exception as e:
+    except OSError as e:
         bot.reply_to(message, f"Yuborib bo'lmadi: {e}")
 
 
